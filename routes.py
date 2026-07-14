@@ -1,0 +1,262 @@
+"""
+BIU - Flask API 路由 & 窗口控制
+"""
+import json
+import logging
+import time
+
+import requests
+from flask import Response, jsonify, request
+
+logger = logging.getLogger(__name__)
+
+
+class WindowApi:
+    """主窗口 JS API —— 窗口控制 + 播放控制"""
+
+    def __init__(self):
+        self._main_window = None
+        self._on_minimize_to_tray = None
+
+    def set_main(self, w):
+        self._main_window = w
+
+    def set_on_minimize_to_tray(self, callback):
+        """设置最小化到托盘的钩子；设置后 minimize/close 都会走托盘"""
+        self._on_minimize_to_tray = callback
+
+    def minimize(self):
+        if self._on_minimize_to_tray:
+            self._on_minimize_to_tray()
+        elif self._main_window:
+            self._main_window.minimize()
+
+    def move_window(self, x, y):
+        x, y = int(x), int(y)
+        if self._main_window:
+            self._main_window.move(x, y)
+
+    def close(self):
+        if self._on_minimize_to_tray:
+            self._on_minimize_to_tray()
+        elif self._main_window:
+            self._main_window.destroy()
+
+    # ---- 播放控制（供托盘菜单调用）----
+    def _eval(self, js: str):
+        """在 webview 中执行 JS，忽略异常"""
+        if self._main_window:
+            try:
+                self._main_window.evaluate_js(js)
+            except Exception:
+                pass
+
+    def toggle_play(self):
+        self._eval("togglePlay()")
+
+    def next_song(self):
+        self._eval("nextSong()")
+
+    def prev_song(self):
+        self._eval("prevSong()")
+
+    def get_playback_state(self) -> dict:
+        """获取前端播放状态，供托盘轮询"""
+        if self._main_window:
+            try:
+                raw = self._main_window.evaluate_js("getPlaybackState()")
+                if raw and isinstance(raw, str):
+                    return json.loads(raw)
+            except Exception:
+                pass
+        return {"title": "未在播放", "isPlaying": False}
+
+
+def register_routes(app, client, load_config, save_config):
+    """向 Flask app 注册所有 API 路由"""
+
+    # ---- 主页 ----
+    from template import HTML_TEMPLATE
+
+    @app.route("/")
+    def index():
+        from flask import render_template_string
+        return render_template_string(HTML_TEMPLATE)
+
+    # ---- 登录 / 登出 ----
+    @app.route("/api/login", methods=["POST"])
+    def api_login():
+        data = request.get_json()
+        sessdata = data.get("sessdata", "").strip()
+        if not sessdata:
+            return jsonify({"ok": False, "error": "请输入 SESSDATA"})
+
+        client.set_cookie(sessdata)
+        try:
+            mid = client.get_self_mid()
+        except Exception as e:
+            logger.error("login exception: %s", e)
+            return jsonify({"ok": False, "error": "请求失败，请检查网络连接"})
+
+        if not mid:
+            return jsonify({"ok": False, "error": "SESSDATA 无效或已过期，请重新获取"})
+
+        cfg = load_config()
+        cfg["sessdata"] = sessdata
+        cfg["buvid"] = client._buvid
+        save_config(cfg)
+        return jsonify({"ok": True, "mid": mid})
+
+    @app.route("/api/logout", methods=["POST"])
+    def api_logout():
+        cfg = load_config()
+        cfg.pop("sessdata", None)
+        cfg.pop("buvid", None)
+        save_config(cfg)
+        client.set_cookie("")
+        client._buvid = None
+        return jsonify({"ok": True})
+
+    # ---- 用户信息 ----
+    @app.route("/api/user")
+    def api_user():
+        info = client.get_self_info()
+        if info:
+            return jsonify({
+                "logged_in": True,
+                "mid": info["mid"],
+                "uname": info["uname"],
+                "face": info["face"],
+            })
+        return jsonify({"logged_in": False})
+
+    # ---- 收藏夹列表 ----
+    @app.route("/api/folders")
+    def api_folders():
+        try:
+            folders = client.get_fav_folders()
+            logger.info("API /api/folders: returning %s folders", len(folders))
+            return jsonify(folders)
+        except Exception as e:
+            logger.error("API /api/folders error: %s", e)
+            return jsonify([])
+
+    # ---- 收藏夹信息（含封面） ----
+    @app.route("/api/folder-info")
+    def api_folder_info():
+        media_id = request.args.get("media_id", type=int)
+        if not media_id:
+            return jsonify(None)
+        try:
+            info = client.get_fav_folder_info(media_id)
+            return jsonify(info)
+        except Exception as e:
+            logger.error("API /api/folder-info error: %s", e)
+            return jsonify(None)
+
+    # ---- 隐藏收藏夹配置 ----
+    @app.route("/api/hidden-folders", methods=["GET", "POST"])
+    def api_hidden_folders():
+        cfg = load_config()
+        if request.method == "GET":
+            return jsonify({"hidden": cfg.get("hidden_folders", [])})
+        else:
+            data = request.get_json() or {}
+            cfg["hidden_folders"] = data.get("hidden", [])
+            save_config(cfg)
+            return jsonify({"ok": True})
+
+    # ---- 系统设置 ----
+    @app.route("/api/system-settings", methods=["GET", "POST"])
+    def api_system_settings():
+        cfg = load_config()
+        sys_cfg = cfg.get("system", {})
+        if request.method == "GET":
+            return jsonify({
+                "font_family": sys_cfg.get("font_family", "default"),
+                "theme": sys_cfg.get("theme", "dark"),
+            })
+        else:
+            data = request.get_json() or {}
+            cfg["system"] = {
+                "font_family": data.get("font_family", "default"),
+                "theme": data.get("theme", "dark"),
+            }
+            save_config(cfg)
+            return jsonify({"ok": True})
+
+    # ---- 收藏夹内容 ----
+    @app.route("/api/folder-content")
+    def api_folder_content():
+        media_id = request.args.get("media_id", type=int)
+        page = request.args.get("page", 1, type=int)
+        if not media_id:
+            return jsonify({"items": [], "has_more": False, "error": "missing media_id"})
+        try:
+            result = client.get_fav_folder_content(media_id, page)
+            return jsonify(result)
+        except Exception as e:
+            logger.error("API /api/folder-content error: %s", e)
+            return jsonify({"items": [], "has_more": False, "error": str(e)})
+
+    # ---- 音频代理 ----
+    @app.route("/api/audio")
+    def api_audio():
+        bvid = request.args.get("bvid", "")
+        if not bvid:
+            return Response("missing bvid", status=400)
+
+        max_retries = 3
+        last_error = None
+        audio_url = None
+
+        for attempt in range(max_retries):
+            if audio_url is None:
+                info = client.get_play_info(bvid)
+                if not info or not info.get("audio_url"):
+                    return Response("no audio url", status=404)
+                audio_url = info["audio_url"]
+
+            try:
+                stream_resp = client.session.get(
+                    audio_url,
+                    headers={"Referer": "https://www.bilibili.com/"},
+                    stream=True,
+                    timeout=(10, 30),
+                )
+                stream_resp.raise_for_status()
+
+                def generate():
+                    for chunk in stream_resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            yield chunk
+
+                content_type = stream_resp.headers.get("Content-Type", "audio/mp4")
+                return Response(
+                    generate(),
+                    status=200,
+                    content_type=content_type,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": stream_resp.headers.get("Content-Length", ""),
+                    },
+                )
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                logger.warning(
+                    "audio proxy attempt %s/%s CDN unreachable: %s",
+                    attempt + 1, max_retries, e,
+                )
+                audio_url = None
+                time.sleep(0.5)
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    "audio proxy attempt %s/%s error: %s",
+                    attempt + 1, max_retries, e,
+                )
+                audio_url = None
+                time.sleep(0.5)
+
+        logger.error("audio proxy all retries exhausted: %s", last_error)
+        return Response("audio proxy error", status=502)
