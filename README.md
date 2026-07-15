@@ -2,6 +2,13 @@
 
 轻量级 Bilibili 音乐播放器桌面版，基于 Python + Flask + pywebview 构建。登录后从收藏夹中提取音频播放，常驻系统托盘，支持播放控制。
 
+## 📸 预览
+
+| | | | |
+|:---:|:---:|:---:|:---:|
+| ![](screenshots/BIU-White.png) | ![](screenshots/BIU-Login.png) | ![](screenshots/BIU-Favorite.png) | ![](screenshots/BIU-Setting.png) |
+| 浅色主题 | 欢迎页 | 收藏夹播放 | 收藏夹设置 |
+
 ## ✨ 特性
 
 - **B站收藏夹音乐播放** — 登录后读取收藏夹，提取视频音频流（优先 FLAC 无损）
