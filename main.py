@@ -384,31 +384,111 @@ class WindowDockManager:
 
 
 # ---- 主入口 ----
+# ---- WebView2 运行时检测 & 自动安装 ----
+def _ensure_webview2():
+    """检测 Edge WebView2 Runtime 是否安装，未安装则自动下载安装。"""
+    import subprocess, tempfile, urllib.request
+
+    webview2_key = r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    try:
+        import winreg
+        winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, webview2_key)
+        return  # 已安装，无需操作
+    except OSError:
+        pass
+
+    print("[BIU] 未检测到 WebView2 运行时，正在自动安装...")
+    print("[BIU] 安装大约需要 1-2 分钟，请稍候...")
+
+    installer_path = os.path.join(tempfile.gettempdir(), "WebView2Setup.exe")
+    try:
+        urllib.request.urlretrieve(
+            "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+            installer_path
+        )
+        subprocess.run([installer_path, "/install"], check=True, capture_output=True)
+        os.remove(installer_path)
+        print("[BIU] WebView2 运行时安装完成！")
+    except Exception as e:
+        print(f"[BIU] 自动安装失败: {e}")
+        print("[BIU] 请手动下载安装: https://developer.microsoft.com/microsoft-edge/webview2/")
+        # 不退出，让 pywebview 尝试其他渲染引擎做 fallback
+        try:
+            os.remove(installer_path)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
+    import socket
+    import ctypes as _ct
+
+    # ---- 确保 WebView2 运行时可用 ----
+    if sys.platform == "win32":
+        _ensure_webview2()
+
+    # ---- 允许 Ctrl+C 退出（Windows GUI 事件循环不处理控制台信号）----
+    if sys.platform == "win32":
+        _ct.windll.kernel32.SetConsoleTitleW("BIU Music Player")
+        _handler_type = _ct.WINFUNCTYPE(_ct.c_bool, _ct.c_ulong)
+
+        @_handler_type
+        def _console_handler(ctrl_type):
+            if ctrl_type in (0, 2):  # CTRL_C_EVENT, CTRL_CLOSE_EVENT
+                print("\n正在退出 BIU...")
+                os._exit(0)
+            return False
+
+        _ct.windll.kernel32.SetConsoleCtrlHandler(_console_handler, True)
+
     print("=" * 50)
     print("  BIU Music Player (桌面版)")
     print("=" * 50)
 
-    def start_flask():
-        app.run(host="127.0.0.1", port=27232, debug=False)
+    # ---- Flask 启动（带端口冲突检测）----
+    flask_ready = threading.Event()
+    flask_error_msg = None
 
-    # 后台启动 Flask
+    def start_flask():
+        global flask_error_msg
+        try:
+            from werkzeug.serving import make_server
+            server = make_server("127.0.0.1", 27232, app, threaded=True)
+            # SO_REUSEADDR 避免端口 TIME_WAIT 导致无法重启
+            server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            flask_ready.set()
+            server.serve_forever()
+        except OSError as e:
+            flask_error_msg = str(e)
+            flask_ready.set()
+
     threading.Thread(target=start_flask, daemon=True).start()
 
-    # 屏幕居中（ctypes 无需启动 tk 窗口，更快）
-    import ctypes as _ct
-    screen_w = _ct.windll.user32.GetSystemMetrics(0)
-    screen_h = _ct.windll.user32.GetSystemMetrics(1)
+    if not flask_ready.wait(timeout=5):
+        print("错误: Flask 启动超时，请检查环境")
+        os._exit(1)
 
-    # 等待 Flask 就绪（轮询取代固定 sleep，更快）
+    if flask_error_msg:
+        print(f"错误: Flask 启动失败 - {flask_error_msg}")
+        print("端口 27232 可能被占用。请在任务管理器中结束残留的 Python 进程后重试。")
+        os._exit(1)
+
+    # 等待 Flask 真正就绪
     import requests as _rq
     for _ in range(20):
-        time.sleep(0.05)
+        time.sleep(0.1)
         try:
-            _rq.get("http://127.0.0.1:27232", timeout=0.3)
+            _rq.get("http://127.0.0.1:27232", timeout=0.5)
             break
         except Exception:
             continue
+    else:
+        print("错误: 无法连接到 Flask 服务，请检查端口 27232 是否被占用")
+        os._exit(1)
+
+    # 屏幕居中
+    screen_w = _ct.windll.user32.GetSystemMetrics(0)
+    screen_h = _ct.windll.user32.GetSystemMetrics(1)
 
     # 窗口控制 API
     window_api = WindowApi()

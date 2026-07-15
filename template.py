@@ -11,8 +11,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="referrer" content="no-referrer">
 <title>BIU Music</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;700&family=LXGW+WenKai+Mono:wght@400;700&family=ZCOOL+XiaoWei&family=Fira+Code:wght@400;600&display=swap');
-
 /* ========== 主题变量 ========== */
 :root {
   --accent: #fb7299;
@@ -560,9 +558,7 @@ body {
   overflow: hidden;
   transition: max-height .25s ease;
 }
-.folder-content.expanded { display: block; }
-
-.folder-content.expanded { overflow-y: auto; }
+.folder-content.expanded { display: block; overflow-y: auto; }
 .fc-song-item {
   display: flex;
   align-items: center;
@@ -872,7 +868,7 @@ body {
     <div class="settings-section-desc">勾选要在列表中显示的收藏夹</div>
     <div class="settings-check-list" id="settings-check-list"></div>
     <div style="margin-top:8px;display:flex;gap:6px;">
-      <button class="btn btn-sm" onclick="toggleAllCheckboxes()">全选</button>
+      <button class="btn btn-sm" onclick="toggleAllCheckboxes()">全不选</button>
       <button class="btn btn-primary btn-sm" onclick="saveSettings()">保存</button>
     </div>
   </div>
@@ -1043,6 +1039,7 @@ async function loadUser() {
     loginBtn.style.display = "";
     avatarEl.style.display = "none";
   }
+  return data;
 }
 
 function toggleAvatarMenu(e) {
@@ -1802,9 +1799,7 @@ document.addEventListener("keydown", e => {
 // ---- 初始化 ----
 (async function init() {
   await loadSystemSettings();
-  await loadUser();
-  const resp = await fetch("/api/user");
-  const data = await resp.json();
+  const data = await loadUser();
   if (data.logged_in) {
     await loadHiddenFolders();
     await loadFolders();
