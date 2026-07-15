@@ -16,6 +16,7 @@ from flask import Flask
 from bilibili import BiliClient
 from routes import WindowApi, register_routes
 
+
 # ---- 应用路径 & 日志 ----
 def _get_app_dir() -> str:
     """获取应用目录（兼容 PyInstaller 打包）"""
@@ -65,7 +66,6 @@ def _get_tray_image(app_dir: str):
     """加载托盘图标，优先使用 BIU.ico"""
     from PIL import Image
 
-    # PyInstaller 打包后图标在 _MEIPASS 内，未打包时在 app_dir 内
     if getattr(sys, "frozen", False):
         ico_path = os.path.join(sys._MEIPASS, "BIU.ico")
     else:
@@ -74,15 +74,14 @@ def _get_tray_image(app_dir: str):
     if os.path.exists(ico_path):
         try:
             img = Image.open(ico_path)
-            img = img.convert("RGBA")           # 确保有透明通道
-            img = img.resize((32, 32), Image.LANCZOS)  # 缩小到托盘尺寸，高质量采样
+            img = img.convert("RGBA")
+            img = img.resize((32, 32), Image.LANCZOS)
             return img
         except Exception:
             pass
 
     # 兜底：生成简单音乐图标
     from PIL import ImageDraw
-
     img = Image.new("RGBA", (64, 64), (108, 92, 231, 255))
     draw = ImageDraw.Draw(img)
     draw.text((18, 12), "♪", fill="white")
@@ -90,13 +89,12 @@ def _get_tray_image(app_dir: str):
 
 
 class TrayManager:
-    """管理系统托盘图标，实现最小化到托盘 + 播放控制"""
+    """管理系统托盘图标，实现关闭到托盘 + 播放控制"""
 
-    def __init__(self, window, app_dir: str, window_api, docker=None):
+    def __init__(self, window, app_dir: str, window_api):
         self._window = window
         self._app_dir = app_dir
         self._api = window_api
-        self._docker = docker
         self._icon = None
         self._thread = None
         self._menu_update_timer = None
@@ -117,7 +115,6 @@ class TrayManager:
         title = state.get("title", "未在播放")
         is_playing = state.get("isPlaying", False)
 
-        # 去掉【xxx】前缀，截断至 ~12 字保持菜单紧凑
         title = re.sub(r"【[^】]*】", "", title).strip()
         display_title = title if len(title) <= 12 else title[:10] + "..."
 
@@ -133,16 +130,8 @@ class TrayManager:
             pystray.MenuItem("退出", self._on_exit),
         )
 
-    def _refresh_menu(self):
-        """刷新托盘菜单（安全调用）"""
-        if self._icon:
-            try:
-                self._icon.update_menu()
-            except Exception:
-                pass
-
     def _schedule_menu_update(self):
-        """定时轮询播放状态，仅在标题或播放/暂停变化时才重建菜单"""
+        """定时轮询播放状态变化并刷新菜单"""
 
         def _loop():
             while self._icon is not None:
@@ -151,7 +140,6 @@ class TrayManager:
                     title = state.get("title", "未在播放")
                     is_playing = state.get("isPlaying", False)
 
-                    # 状态未变化则跳过，避免菜单闪烁
                     if title == self._last_title and is_playing == self._last_is_playing:
                         time.sleep(2)
                         continue
@@ -206,8 +194,6 @@ class TrayManager:
             return hmenu
 
         self._icon._create_menu = _patched_create
-
-        # 启动菜单定时刷新
         self._schedule_menu_update()
         self._icon.run()
 
@@ -220,23 +206,18 @@ class TrayManager:
 
     def _on_restore(self):
         """从托盘恢复窗口"""
-        if self._docker:
-            self._docker.force_show()
         try:
             self._window.show()
         except Exception:
             pass
 
     def _on_toggle(self):
-        """托盘：播放/暂停"""
         self._api.toggle_play()
 
     def _on_next(self):
-        """托盘：下一首"""
         self._api.next_song()
 
     def _on_prev(self):
-        """托盘：上一首"""
         self._api.prev_song()
 
     def _on_exit(self):
@@ -244,7 +225,6 @@ class TrayManager:
         self._exiting = True
         if self._icon:
             self._icon.stop()
-        # 不阻塞 pystray 回调线程，让图标立即消失；窗口销毁放后台
         threading.Thread(target=self._do_exit, daemon=True).start()
 
     def _do_exit(self):
@@ -255,135 +235,6 @@ class TrayManager:
         os._exit(0)
 
 
-# ---- 窗口吸附：拖到屏幕顶部自动隐藏，鼠标悬浮边缘显示 ----
-
-
-class WindowDockManager:
-    """QQ 式窗口吸附：推到屏幕顶部自动缩进，鼠标靠边滑出"""
-
-    _DOCK_THRESHOLD = 5       # y ≤ 此值触发吸附
-    _SHOW_THRESHOLD = 60      # 鼠标 y ≤ 此值触发展示
-    _REHIDE_DELAY = 0.6       # 鼠标离开窗口区域后缩回等待（秒）
-    _VISIBLE_STRIP = 2        # 隐藏后保留若干 px 可见
-    _SLIDE_STEPS = 8          # 滑动动画帧数
-
-    def __init__(self, window):
-        self._window = window
-        self._docked = False
-        self._animating = False
-        self._dock_x = 0
-        self._dock_w = 0
-        self._dock_h = 0
-        self._thread = None
-
-    def start(self):
-        self._thread = threading.Thread(target=self._monitor, daemon=True)
-        self._thread.start()
-
-    # ---- 工具 ----
-    def _geo(self):
-        try:
-            return self._window.x, self._window.y, self._window.width, self._window.height
-        except Exception:
-            return None
-
-    def _cursor(self):
-        import ctypes
-        pt = ctypes.wintypes.POINT()
-        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        return pt.x, pt.y
-
-    # ---- 动画 ----
-    def _slide(self, target_y: int):
-        try:
-            start_y = self._window.y
-        except Exception:
-            return
-        for i in range(1, self._SLIDE_STEPS + 1):
-            t = i / self._SLIDE_STEPS
-            eased = t * t * (3 - 2 * t)  # ease-in-out
-            try:
-                self._window.move(self._dock_x, int(start_y + (target_y - start_y) * eased))
-            except Exception:
-                break
-            time.sleep(0.01)
-
-    def _dock(self):
-        geo = self._geo()
-        if not geo:
-            return
-        self._dock_x, _, self._dock_w, self._dock_h = geo
-        self._animating = True
-        self._slide(-self._dock_h + self._VISIBLE_STRIP)
-        self._docked = True
-        self._animating = False
-
-    def _undock(self, target_y: int = 0):
-        self._animating = True
-        self._slide(target_y)
-        self._docked = False
-        self._animating = False
-
-    def force_show(self):
-        """强制显示（托盘恢复/外部调用）"""
-        if self._docked:
-            self._undock()
-
-    # ---- 监控线程 ----
-    def _monitor(self):
-        time.sleep(2)  # 等窗口就绪
-
-        while True:
-            try:
-                geo = self._geo()
-                if not geo:
-                    time.sleep(0.5)
-                    continue
-                x, y, w, h = geo
-
-                # 未吸附 + 推到顶部 → 缩进
-                if not self._docked and not self._animating:
-                    if y <= self._DOCK_THRESHOLD and h > 0:
-                        time.sleep(0.4)          # 防抖
-                        geo2 = self._geo()
-                        if geo2 and geo2[1] <= self._DOCK_THRESHOLD and not self._animating:
-                            self._dock()
-
-                # 已吸附 → 检测鼠标是否悬停顶部边缘
-                if self._docked and not self._animating:
-                    cx, cy = self._cursor()
-                    if (cy <= self._SHOW_THRESHOLD and
-                            self._dock_x - 20 <= cx <= self._dock_x + self._dock_w + 20):
-                        self._undock()
-                        # 窗口滑出后，保持展示直到鼠标离开窗口区域
-                        while True:
-                            time.sleep(0.3)
-                            # 用户把窗口拖走了？退出吸附模式
-                            geo3 = self._geo()
-                            if geo3 and geo3[1] > self._DOCK_THRESHOLD:
-                                break
-                            cx2, cy2 = self._cursor()
-                            in_win = (cy2 <= h and
-                                      self._dock_x - 20 <= cx2 <= self._dock_x + self._dock_w + 20)
-                            if in_win:
-                                continue
-                            time.sleep(self._REHIDE_DELAY)
-                            cx3, cy3 = self._cursor()
-                            in_win2 = (cy3 <= h and
-                                       self._dock_x - 20 <= cx3 <= self._dock_x + self._dock_w + 20)
-                            if not in_win2:
-                                # 再次确认窗口还在顶部才缩回
-                                geo4 = self._geo()
-                                if geo4 and geo4[1] <= self._DOCK_THRESHOLD:
-                                    self._dock()
-                            break
-
-            except Exception:
-                pass
-            time.sleep(0.3)
-
-
-# ---- 主入口 ----
 # ---- WebView2 运行时检测 & 自动安装 ----
 def _ensure_webview2():
     """检测 Edge WebView2 Runtime 是否安装，未安装则自动下载安装。"""
@@ -393,7 +244,7 @@ def _ensure_webview2():
     try:
         import winreg
         winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, webview2_key)
-        return  # 已安装，无需操作
+        return
     except OSError:
         pass
 
@@ -412,13 +263,13 @@ def _ensure_webview2():
     except Exception as e:
         print(f"[BIU] 自动安装失败: {e}")
         print("[BIU] 请手动下载安装: https://developer.microsoft.com/microsoft-edge/webview2/")
-        # 不退出，让 pywebview 尝试其他渲染引擎做 fallback
         try:
             os.remove(installer_path)
         except Exception:
             pass
 
 
+# ---- 主入口 ----
 if __name__ == "__main__":
     import socket
     import ctypes as _ct
@@ -427,14 +278,14 @@ if __name__ == "__main__":
     if sys.platform == "win32":
         _ensure_webview2()
 
-    # ---- 允许 Ctrl+C 退出（Windows GUI 事件循环不处理控制台信号）----
+    # ---- 允许 Ctrl+C 退出 ----
     if sys.platform == "win32":
         _ct.windll.kernel32.SetConsoleTitleW("BIU Music Player")
         _handler_type = _ct.WINFUNCTYPE(_ct.c_bool, _ct.c_ulong)
 
         @_handler_type
         def _console_handler(ctrl_type):
-            if ctrl_type in (0, 2):  # CTRL_C_EVENT, CTRL_CLOSE_EVENT
+            if ctrl_type in (0, 2):
                 print("\n正在退出 BIU...")
                 os._exit(0)
             return False
@@ -445,7 +296,7 @@ if __name__ == "__main__":
     print("  BIU Music Player (桌面版)")
     print("=" * 50)
 
-    # ---- Flask 启动（带端口冲突检测）----
+    # ---- Flask 启动 ----
     flask_ready = threading.Event()
     flask_error_msg = None
 
@@ -454,7 +305,6 @@ if __name__ == "__main__":
         try:
             from werkzeug.serving import make_server
             server = make_server("127.0.0.1", 27232, app, threaded=True)
-            # SO_REUSEADDR 避免端口 TIME_WAIT 导致无法重启
             server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             flask_ready.set()
             server.serve_forever()
@@ -473,7 +323,6 @@ if __name__ == "__main__":
         print("端口 27232 可能被占用。请在任务管理器中结束残留的 Python 进程后重试。")
         os._exit(1)
 
-    # 等待 Flask 真正就绪
     import requests as _rq
     for _ in range(20):
         time.sleep(0.1)
@@ -490,7 +339,6 @@ if __name__ == "__main__":
     screen_w = _ct.windll.user32.GetSystemMetrics(0)
     screen_h = _ct.windll.user32.GetSystemMetrics(1)
 
-    # 窗口控制 API
     window_api = WindowApi()
 
     win_w, win_h = 300, 720
@@ -513,48 +361,17 @@ if __name__ == "__main__":
     )
     window_api.set_main(main_win)
 
-    # 隐藏任务栏图标：窗口只出现在系统托盘
-    def _hide_from_taskbar():
-        import ctypes
-
-        hwnd = ctypes.windll.user32.FindWindowW(None, "BIU Music Player")
-        if not hwnd:
-            for _ in range(30):
-                time.sleep(0.1)
-                hwnd = ctypes.windll.user32.FindWindowW(None, "BIU Music Player")
-                if hwnd:
-                    break
-        if not hwnd:
-            return
-
-        GWL_EXSTYLE = -20
-        WS_EX_TOOLWINDOW = 0x00000080
-        WS_EX_APPWINDOW = 0x00040000
-        ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ex_style = (ex_style & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style)
-        # SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE → 刷新样式
-        ctypes.windll.user32.SetWindowPos(
-            hwnd, 0, 0, 0, 0, 0, 0x0020 | 0x0001 | 0x0002
-        )
-
-    main_win.events.shown += _hide_from_taskbar
-
-    # 窗口吸附：推到屏幕顶部自动缩进，鼠标悬浮边缘滑出
-    docker = WindowDockManager(main_win)
-    docker.start()
-
-    # 启动系统托盘：最小化/关闭 → 隐藏到托盘，通过托盘菜单退出/控制播放
-    tray = TrayManager(main_win, _get_app_dir(), window_api, docker)
+    # 启动系统托盘
+    tray = TrayManager(main_win, _get_app_dir(), window_api)
     tray.start()
     window_api.set_on_minimize_to_tray(tray.minimize_to_tray)
 
-    # 拦截窗口关闭事件：关闭窗口 → 隐藏到托盘，不退出程序
+    # 关闭窗口 → 隐藏到托盘，任务栏图标消失，托盘图标保留
     def _on_closing():
         if tray._exiting:
-            return True  # 真正退出，允许销毁
+            return True
         tray.minimize_to_tray()
-        return False  # 阻止窗口销毁，隐藏到托盘
+        return False
 
     main_win.events.closing += _on_closing
 

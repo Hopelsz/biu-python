@@ -26,9 +26,8 @@ class WindowApi:
         self._on_minimize_to_tray = callback
 
     def minimize(self):
-        if self._on_minimize_to_tray:
-            self._on_minimize_to_tray()
-        elif self._main_window:
+        """正常最小化到任务栏"""
+        if self._main_window:
             self._main_window.minimize()
 
     def move_window(self, x, y):
