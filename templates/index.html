@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>BIU Music</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body data-theme="dark">
+
+<!-- Cookie 弹窗 -->
+<div id="cookie-dialog" class="overlay" style="display:none">
+  <div class="dialog">
+    <h2>登录 Bilibili</h2>
+    <p>1. 打开 <a href="https://www.bilibili.com" target="_blank" class="link-accent">bilibili.com</a> 并登录<br>
+    2. 按 F12 → Application → Cookies → 复制 <b>SESSDATA</b> 的值<br>
+    3. 粘贴到下方：</p>
+    <input id="sessdata-input" type="text" placeholder="粘贴 SESSDATA...">
+    <div class="actions">
+      <button class="btn" onclick="hideCookieDialog()">取消</button>
+      <button class="btn btn-primary" onclick="saveCookie()">确认登录</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- 备注右键菜单 -->
+<div id="remark-menu" class="remark-menu">
+  <button class="rm-item" id="rm-edit" onclick="startEditRemarkFromMenu()">
+    <svg class="rm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+    <span>编辑备注</span>
+  </button>
+  <button class="rm-item rm-delete" id="rm-delete" onclick="deleteRemarkFromMenu()" style="display:none">
+    <svg class="rm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    <span>删除备注</span>
+  </button>
+</div>
+
+<!-- 自定义标题栏 -->
+<div class="title-bar">
+  <span class="title-text"><span class="logo-icon">♫</span>BIU</span>
+  <div style="display:flex;align-items:center;gap:2px;">
+    <button class="theme-btn" id="theme-toggle-btn" title="切换浅色模式">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+    <div class="win-ctrl">
+      <button class="win-btn" onclick="window.pywebview.api.minimize()" title="最小化">─</button>
+      <button class="win-btn btn-close" onclick="window.pywebview.api.close()" title="关闭">✕</button>
+    </div>
+  </div>
+</div>
+
+<div id="content-wrap">
+<!-- 顶部 -->
+<div class="header">
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="header-search" id="header-search" type="text" placeholder="搜索歌曲..." oninput="filterSongs();toggleSearchClear()">
+    <button class="search-clear" id="search-clear" onclick="clearSearch()" title="清空">✕</button>
+  </div>
+  <div class="header-top-right">
+    <img id="user-avatar" class="user-avatar" src="" alt="" style="display:none" title="" onclick="toggleAvatarMenu(event)">
+    <div class="avatar-dropdown" id="avatar-dropdown">
+      <button class="dd-item" onclick="showSettings();document.getElementById('avatar-dropdown').classList.remove('show')">设置</button>
+      <button class="dd-item danger" onclick="logout()">退出登录</button>
+    </div>
+    <button class="btn-login" id="login-btn" onclick="showCookieDialog()" title="登录">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block">
+        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- 设置页面 -->
+<div class="settings-page" id="settings-page" style="display:none">
+  <div class="settings-page-header">
+    <button class="back-btn" onclick="hideSettings()">← 返回</button>
+  </div>
+  <div class="settings-tabs">
+    <button class="settings-tab active" data-tab="display" onclick="switchSettingsTab('display', this)">显示设置</button>
+    <button class="settings-tab" data-tab="system" onclick="switchSettingsTab('system', this)">系统设置</button>
+  </div>
+  <div class="settings-content">
+  <div class="settings-section" data-tab-content="display">
+    <div class="settings-section-title">收藏夹显示</div>
+    <div class="settings-section-desc">勾选要在列表中显示的收藏夹</div>
+    <div class="settings-check-list" id="settings-check-list"></div>
+    <div style="margin-top:8px;display:flex;gap:6px;">
+      <button class="btn btn-sm" onclick="toggleAllCheckboxes(event)">全不选</button>
+      <button class="btn btn-primary btn-sm" onclick="saveSettings()">保存</button>
+    </div>
+    <hr class="settings-divider">
+    <div class="settings-section-title">歌曲名称显示</div>
+    <div class="settings-section-desc">优先显示备注名（右键歌曲可编辑备注）</div>
+    <div class="settings-row">
+      <span class="settings-label">显示备注名</span>
+      <span class="toggle-switch" onclick="toggleRemarkDisplay()">
+        <input type="checkbox" id="sys-display-remark" style="display:none">
+        <span class="toggle-track">
+          <span class="toggle-thumb"></span>
+        </span>
+      </span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">显示作者</span>
+      <span class="toggle-switch" onclick="toggleShowAuthor()">
+        <input type="checkbox" id="sys-show-author" style="display:none">
+        <span class="toggle-track">
+          <span class="toggle-thumb"></span>
+        </span>
+      </span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">显示时长</span>
+      <span class="toggle-switch" onclick="toggleShowDuration()">
+        <input type="checkbox" id="sys-show-duration" style="display:none">
+        <span class="toggle-track">
+          <span class="toggle-thumb"></span>
+        </span>
+      </span>
+    </div>
+  </div>
+  <div class="settings-section" data-tab-content="system" style="display:none">
+    <div class="settings-section-title">外观</div>
+    <div class="settings-section-desc">调整界面字体与大小</div>
+    <div class="settings-row">
+      <span class="settings-label">字体</span>
+      <select id="sys-font-family">
+        <option value="default">系统默认</option>
+        <option value="noto-sans">Noto Sans SC</option>
+        <option value="noto-serif">Noto Serif SC</option>
+        <option value="wenkai">霞鹜文楷</option>
+        <option value="xiaowei">站酷小薇</option>
+        <option value="mono">等宽字体</option>
+      </select>
+    </div>
+    <div class="settings-preview" id="font-preview">
+      <div class="preview-label">预览</div>
+      <div class="preview-text">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz<br>0123456789 · 天地玄黄 宇宙洪荒</div>
+    </div>
+    <div style="margin-top:8px;">
+      <button class="btn btn-primary btn-sm" onclick="saveSystemSettings()">保存</button>
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- 主体 - 文件夹列表 -->
+<div class="main" id="main-area">
+  <div class="folder-list" id="folder-list">
+    <div class="empty">加载中...</div>
+  </div>
+</div>
+</div>
+
+<!-- 底部播放器 -->
+<div class="player">
+  <div class="player-info">
+    <span class="title" id="now-title">♫ 未在播放</span>
+    <span class="folder-src" id="folder-src" style="display:none" onclick="locateCurrentFolder()" title="点击定位收藏夹"></span>
+  </div>
+  <div class="progress-wrap">
+    <span id="cur-time">0:00</span>
+    <input type="range" id="progress" min="0" max="100" value="0" oninput="seek(this.value)">
+    <span id="dur-time">0:00</span>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn mode-btn" onclick="togglePlayMode()" id="btn-mode" title="列表循环">🔁</button>
+    <button class="ctrl-btn" onclick="prevSong()" id="btn-prev" title="上一首">⏮</button>
+    <button class="ctrl-btn play-btn" onclick="togglePlay()" id="btn-play" title="播放/暂停">▶</button>
+    <button class="ctrl-btn" onclick="nextSong()" id="btn-next" title="下一首">⏭</button>
+    <div class="volume-wrap">
+      <span onclick="toggleMute()" id="vol-icon">🔊</span>
+      <input type="range" id="volume" min="0" max="100" value="5"
+             oninput="setVolume(this.value)" onchange="hideVolTip()">
+      <div class="vol-tip" id="vol-tip">10</div>
+    </div>
+  </div>
+</div>
+
+<audio id="audio" preload="auto" style="display:none"></audio>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

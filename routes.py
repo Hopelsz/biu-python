@@ -10,6 +10,14 @@ from flask import Response, jsonify, request
 
 logger = logging.getLogger(__name__)
 
+# 记录曾经成功响应的 CDN 主机，下次优先使用
+_GOOD_CDN_HOSTS: set[str] = set()
+
+
+def _extract_host(url: str) -> str:
+    """从 URL 中提取 host:port"""
+    return url.split("/")[2] if "://" in url and url.count("/") >= 3 else ""
+
 
 class WindowApi:
     """主窗口 JS API —— 窗口控制 + 播放控制"""
@@ -75,12 +83,10 @@ def register_routes(app, client, load_config, save_config):
     """向 Flask app 注册所有 API 路由"""
 
     # ---- 主页 ----
-    from template import HTML_TEMPLATE
-
     @app.route("/")
     def index():
-        from flask import render_template_string
-        return render_template_string(HTML_TEMPLATE)
+        from flask import render_template
+        return render_template("index.html")
 
     # ---- 登录 / 登出 ----
     @app.route("/api/login", methods=["POST"])
@@ -174,13 +180,40 @@ def register_routes(app, client, load_config, save_config):
             return jsonify({
                 "font_family": sys_cfg.get("font_family", "default"),
                 "theme": sys_cfg.get("theme", "dark"),
+                "display_remark": sys_cfg.get("display_remark", False),
+                "show_author": sys_cfg.get("show_author", True),
+                "show_duration": sys_cfg.get("show_duration", True),
             })
         else:
             data = request.get_json() or {}
             cfg["system"] = {
-                "font_family": data.get("font_family", "default"),
-                "theme": data.get("theme", "dark"),
+                "font_family": data.get("font_family", sys_cfg.get("font_family", "default")),
+                "theme": data.get("theme", sys_cfg.get("theme", "dark")),
+                "display_remark": data.get("display_remark", sys_cfg.get("display_remark", False)),
+                "show_author": data.get("show_author", sys_cfg.get("show_author", True)),
+                "show_duration": data.get("show_duration", sys_cfg.get("show_duration", True)),
             }
+            save_config(cfg)
+            return jsonify({"ok": True})
+
+    # ---- 歌曲备注 ----
+    @app.route("/api/remarks", methods=["GET", "POST"])
+    def api_remarks():
+        cfg = load_config()
+        if request.method == "GET":
+            return jsonify(cfg.get("remarks", {}))
+        else:
+            data = request.get_json() or {}
+            bvid = data.get("bvid", "").strip()
+            remark = data.get("remark", "").strip()
+            if not bvid:
+                return jsonify({"ok": False, "error": "缺少 bvid"})
+            remarks = cfg.get("remarks", {})
+            if remark:
+                remarks[bvid] = remark
+            elif bvid in remarks:
+                del remarks[bvid]
+            cfg["remarks"] = remarks
             save_config(cfg)
             return jsonify({"ok": True})
 
@@ -205,57 +238,67 @@ def register_routes(app, client, load_config, save_config):
         if not bvid:
             return Response("missing bvid", status=400)
 
-        max_retries = 3
-        last_error = None
-        audio_url = None
+        info = client.get_play_info(bvid)
+        if not info or not info.get("audio_urls"):
+            return Response("no audio url", status=404)
+        audio_urls = info["audio_urls"]
+        logger.info("audio proxy: bvid=%s cid=%s %s url(s)", bvid, info.get("cid"), len(audio_urls))
 
-        for attempt in range(max_retries):
-            if audio_url is None:
-                info = client.get_play_info(bvid)
-                if not info or not info.get("audio_url"):
-                    return Response("no audio url", status=404)
-                audio_url = info["audio_url"]
+        # 优先尝试已知可用的 CDN 主机，并把非标准端口放到最后
+        audio_urls.sort(key=lambda u: (
+            _extract_host(u) not in _GOOD_CDN_HOSTS,
+            ":443" not in u and ":8082" in u,
+        ))
 
-            try:
-                stream_resp = client.session.get(
-                    audio_url,
-                    headers={"Referer": "https://www.bilibili.com/"},
-                    stream=True,
-                    timeout=(10, 30),
-                )
-                stream_resp.raise_for_status()
+        # 遍历所有 CDN URL（主 + 备用），逐个尝试
+        for url_idx, audio_url in enumerate(audio_urls):
+            host = audio_url.split("/")[2] if "/" in audio_url else "?"
+            logger.debug("trying CDN #%s: %s", url_idx + 1, host)
+            for attempt in range(3):
+                try:
+                    headers = {
+                        "Referer": "https://www.bilibili.com/",
+                        "Origin": "https://www.bilibili.com",
+                        "Accept": "*/*",
+                    }
+                    if attempt == 0:
+                        headers["Range"] = "bytes=0-"
 
-                def generate():
-                    for chunk in stream_resp.iter_content(chunk_size=8192):
-                        if chunk:
-                            yield chunk
+                    stream_resp = client.session.get(
+                        audio_url,
+                        headers=headers,
+                        stream=True,
+                        timeout=(10, 30),
+                    )
+                    logger.debug("audio CDN status: %s (url #%s attempt %s)", stream_resp.status_code, url_idx + 1, attempt + 1)
+                    if stream_resp.status_code >= 400:
+                        logger.warning("audio CDN returned %s, retrying...", stream_resp.status_code)
+                        time.sleep(0.3)
+                        continue
+                    stream_resp.raise_for_status()
 
-                content_type = stream_resp.headers.get("Content-Type", "audio/mp4")
-                return Response(
-                    generate(),
-                    status=200,
-                    content_type=content_type,
-                    headers={
-                        "Accept-Ranges": "bytes",
-                        "Content-Length": stream_resp.headers.get("Content-Length", ""),
-                    },
-                )
-            except requests.exceptions.ConnectionError as e:
-                last_error = e
-                logger.warning(
-                    "audio proxy attempt %s/%s CDN unreachable: %s",
-                    attempt + 1, max_retries, e,
-                )
-                audio_url = None
-                time.sleep(0.5)
-            except Exception as e:
-                last_error = e
-                logger.error(
-                    "audio proxy attempt %s/%s error: %s",
-                    attempt + 1, max_retries, e,
-                )
-                audio_url = None
-                time.sleep(0.5)
+                    def generate():
+                        for chunk in stream_resp.iter_content(chunk_size=8192):
+                            if chunk:
+                                yield chunk
 
-        logger.error("audio proxy all retries exhausted: %s", last_error)
+                    content_type = stream_resp.headers.get("Content-Type", "audio/mp4")
+                    _GOOD_CDN_HOSTS.add(host)
+                    return Response(
+                        generate(),
+                        status=200,
+                        content_type=content_type,
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": stream_resp.headers.get("Content-Length", ""),
+                        },
+                    )
+                except requests.exceptions.ConnectionError as e:
+                    logger.warning("CDN #%s unreachable (attempt %s): %s", url_idx + 1, attempt + 1, e)
+                    time.sleep(0.5)
+                except Exception as e:
+                    logger.error("CDN #%s attempt %s error: %s", url_idx + 1, attempt + 1, e)
+                    time.sleep(0.5)
+
+        logger.error("audio proxy all CDN urls exhausted")
         return Response("audio proxy error", status=502)

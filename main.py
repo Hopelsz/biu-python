@@ -29,9 +29,14 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
+# 关闭 werkzeug 的 HTTP 请求日志（太吵）
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 # ---- Flask 应用 ----
-app = Flask(__name__)
+_app_dir = _get_app_dir()
+app = Flask(__name__,
+    template_folder=os.path.join(_app_dir, "templates"),
+    static_folder=os.path.join(_app_dir, "static"))
 
 CONFIG_FILE = os.path.join(_get_app_dir(), "config.json")
 client = BiliClient()
@@ -118,8 +123,6 @@ class TrayManager:
         display_title = title if len(title) <= 12 else title[:10] + "..."
 
         return pystray.Menu(
-            pystray.MenuItem(display_title, None, enabled=False),
-            pystray.Menu.SEPARATOR,
             pystray.MenuItem("上一首", self._on_prev),
             pystray.MenuItem("暂停" if is_playing else "播放", self._on_toggle),
             pystray.MenuItem("下一首", self._on_next),

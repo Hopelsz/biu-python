@@ -104,7 +104,7 @@ class BiliClient:
                     sub_url = wbi_img.get("sub_url", "")
                     self._wbi_img_key = img_url.rsplit("/", 1)[-1].split(".")[0]
                     self._wbi_sub_key = sub_url.rsplit("/", 1)[-1].split(".")[0]
-                    logger.info("WBI keys cached: img=%s sub=%s", self._wbi_img_key[:8], self._wbi_sub_key[:8])
+                    logger.debug("WBI keys cached: img=%s sub=%s", self._wbi_img_key[:8], self._wbi_sub_key[:8])
                 return self._mid
             else:
                 logger.warning("nav login failed: code=%s msg=%s", data.get("code"), data.get("message"))
@@ -133,7 +133,7 @@ class BiliClient:
             for k in sorted_keys
         )
         params["w_rid"] = hashlib.md5((query + mixin_key).encode()).hexdigest()
-        logger.info("WBI signed query: %s", query[:200])
+        logger.debug("WBI signed query: %s", query[:200])
         return params
 
     # ---- 收藏夹 ----
@@ -154,12 +154,12 @@ class BiliClient:
                 timeout=10,
             )
             nav = resp.json()
-            logger.info("navnum raw: code=%s favourite=%s",
+            logger.debug("navnum raw: code=%s favourite=%s",
                         nav.get("code"),
                         nav.get("data", {}).get("favourite"))
             if nav.get("code") == 0:
                 total = nav.get("data", {}).get("favourite", {}).get("master", 0)
-            logger.info("fav folder total from navnum: %s", total)
+            logger.debug("fav folder total from navnum: %s", total)
         except Exception as e:
             logger.error("navnum error: %s", e)
 
@@ -179,7 +179,7 @@ class BiliClient:
                     logger.error("folder list page %s: empty response", pn)
                     continue
                 data = resp.json()
-                logger.info("folder list page %s: code=%s count=%s msg=%s",
+                logger.debug("folder list page %s: code=%s count=%s msg=%s",
                             pn, data.get("code"),
                             len(data.get("data", {}).get("list", [])),
                             data.get("message"))
@@ -246,13 +246,13 @@ class BiliClient:
                 params=params,
                 timeout=15,
             )
-            logger.info("fav content: status=%s media_id=%s page=%s",
+            logger.debug("fav content: status=%s media_id=%s page=%s",
                         resp.status_code, media_id, page)
             if not resp.text or not resp.text.strip():
                 logger.error("fav content: empty body, status=%s", resp.status_code)
                 return {"items": [], "has_more": False, "total": 0}
             data = resp.json()
-            logger.info("fav content: code=%s msg=%s",
+            logger.debug("fav content: code=%s msg=%s",
                         data.get("code"), data.get("message"))
             if data.get("code") != 0:
                 return {"items": [], "has_more": False, "total": 0}
@@ -270,7 +270,7 @@ class BiliClient:
                     "type": m.get("type", 2),
                 })
 
-            logger.info("fav content: got %s items", len(items))
+            logger.debug("fav content: got %s items", len(items))
             return {
                 "items": items,
                 "has_more": result.get("has_more", False),
@@ -290,14 +290,14 @@ class BiliClient:
                 params={"bvid": bvid},
             )
             data = resp.json()
-            logger.info("video view: bvid=%s code=%s", bvid, data.get("code"))
+            logger.debug("video view: bvid=%s code=%s", bvid, data.get("code"))
             if data.get("code") == 0:
                 cid = data["data"].get("cid") or (
                     data["data"]["pages"][0]["cid"]
                     if data["data"].get("pages")
                     else None
                 )
-                logger.info("got cid=%s for bvid=%s", cid, bvid)
+                logger.debug("got cid=%s for bvid=%s", cid, bvid)
                 return cid
             else:
                 logger.warning("video view failed: %s", data.get("message"))
@@ -312,18 +312,31 @@ class BiliClient:
             self._mid = None
             self.get_self_mid()
 
-    def get_audio_url(self, bvid: str, cid: int) -> str | None:
-        """获取 DASH 音频流地址"""
+    def get_audio_urls(self, bvid: str, cid: int) -> list[str] | None:
+        """获取 DASH 音频流地址列表（主 URL + 备用 URL），用于 CDN 容错切换"""
         self._ensure_wbi_keys()
 
         params = self._sign_params({
             "bvid": bvid,
             "cid": cid,
-            "fnval": 4048,  # DASH + FLAC + Hi-Res + Dolby
+            "fnval": 16,
             "fnver": 0,
-            "fourk": 1,
+            "platform": "web",
         })
-        logger.info("playurl params: w_rid=%s wts=%s", params.get("w_rid", "N/A"), params.get("wts", "N/A"))
+        logger.debug("playurl params: w_rid=%s wts=%s", params.get("w_rid", "N/A"), params.get("wts", "N/A"))
+
+        def _collect_urls(item: dict) -> list[str]:
+            """从单个音频 item 中收集所有 URL（主 + 备用）"""
+            urls = []
+            primary = item.get("base_url") or item.get("baseUrl") or item.get("url")
+            if primary:
+                urls.append(primary)
+            backups = item.get("backup_url") or item.get("backupUrl") or []
+            if isinstance(backups, list):
+                for u in backups:
+                    if u and u not in urls:
+                        urls.append(u)
+            return urls
 
         try:
             resp = self.session.get(
@@ -332,31 +345,42 @@ class BiliClient:
                 timeout=10,
             )
             data = resp.json()
-            logger.info("playurl response: code=%s", data.get("code"))
+            logger.debug("playurl response for %s: code=%s", bvid, data.get("code"))
             if data.get("code") != 0:
                 logger.warning("playurl failed: code=%s msg=%s", data.get("code"), data.get("message"))
                 return None
 
             result = data.get("data", {})
             dash = result.get("dash", {})
+            urls = None
 
             # 优先选无损 FLAC
             flac = result.get("flac")
             if flac and flac.get("audio"):
-                url = flac["audio"].get("base_url") or flac["audio"].get("baseUrl")
-                if url:
-                    logger.info("using FLAC audio")
-                    return url
+                urls = _collect_urls(flac["audio"])
+                if urls:
+                    logger.debug("using FLAC audio, %s url(s)", len(urls))
 
-            # 选最高码率音频
-            audios = dash.get("audio", [])
-            if not audios:
-                logger.warning("no audio streams in dash")
+            # DASH 音频
+            if not urls:
+                audios = dash.get("audio", [])
+                if audios:
+                    best = max(audios, key=lambda a: a.get("bandwidth", 0))
+                    urls = _collect_urls(best)
+                    logger.debug("using DASH audio: codec=%s bandwidth=%s %s url(s)",
+                                best.get("codecs", "?"), best.get("bandwidth", 0), len(urls))
+
+            # 兜底：非 DASH 的 durl 格式
+            if not urls:
+                durl = result.get("durl")
+                if durl and isinstance(durl, list) and len(durl) > 0:
+                    urls = _collect_urls(durl[0])
+                    logger.debug("using durl audio, %s url(s)", len(urls))
+
+            if not urls:
+                logger.warning("no audio streams found in playurl response")
                 return None
-            best = max(audios, key=lambda a: a.get("bandwidth", 0))
-            url = best.get("base_url") or best.get("baseUrl")
-            logger.info("using DASH audio: codec=%s bandwidth=%s", best.get("codecs", "?"), best.get("bandwidth", 0))
-            return url
+            return urls
         except Exception as e:
             logger.error("playurl error: %s", e)
             return None
@@ -367,11 +391,11 @@ class BiliClient:
         if not cid:
             logger.warning("get_play_info: no cid for bvid=%s", bvid)
             return None
-        audio_url = self.get_audio_url(bvid, cid)
-        if not audio_url:
-            logger.warning("get_play_info: no audio_url for bvid=%s cid=%s", bvid, cid)
+        audio_urls = self.get_audio_urls(bvid, cid)
+        if not audio_urls:
+            logger.warning("get_play_info: no audio_urls for bvid=%s cid=%s", bvid, cid)
             return None
-        logger.info("get_play_info success: bvid=%s", bvid)
-        return {"bvid": bvid, "cid": cid, "audio_url": audio_url}
+        logger.debug("get_play_info success: bvid=%s, %s url(s)", bvid, len(audio_urls))
+        return {"bvid": bvid, "cid": cid, "audio_urls": audio_urls}
 
 
