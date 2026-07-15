@@ -119,13 +119,13 @@ def register_routes(app, client, load_config, save_config):
     # ---- 用户信息 ----
     @app.route("/api/user")
     def api_user():
-        info = client.get_self_info()
-        if info:
+        mid = client.get_self_mid()
+        if mid:
             return jsonify({
                 "logged_in": True,
-                "mid": info["mid"],
-                "uname": info["uname"],
-                "face": info["face"],
+                "mid": mid,
+                "uname": client._uname,
+                "face": client._face,
             })
         return jsonify({"logged_in": False})
 

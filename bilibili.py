@@ -136,13 +136,6 @@ class BiliClient:
         logger.info("WBI signed query: %s", query[:200])
         return params
 
-    def get_self_info(self) -> dict | None:
-        """获取当前登录用户信息（mid, uname, face）"""
-        mid = self.get_self_mid()
-        if not mid:
-            return None
-        return {"mid": mid, "uname": self._uname, "face": self._face}
-
     # ---- 收藏夹 ----
 
     def get_fav_folders(self) -> list[dict]:

@@ -97,7 +97,6 @@ class TrayManager:
         self._api = window_api
         self._icon = None
         self._thread = None
-        self._menu_update_timer = None
         self._last_title = ""
         self._last_is_playing = None
         self._exiting = False
@@ -154,7 +153,6 @@ class TrayManager:
 
         t = threading.Thread(target=_loop, daemon=True)
         t.start()
-        self._menu_update_timer = t
 
     def _run(self):
         import ctypes

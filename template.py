@@ -58,9 +58,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   --bg-progress-track: #3a3a3a;
 
   --accent-bg-10: rgba(251,114,153,0.1);
-  --accent-bg-15: rgba(251,114,153,0.15);
   --accent-bg-20: rgba(251,114,153,0.2);
-  --accent-bg-30: rgba(251,114,153,0.3);
   --accent-glow: rgba(251,114,153,.4);
 
   --icon-search: #555;
@@ -108,15 +106,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   --bg-overlay: rgba(0,0,0,.4);
   --shadow-sm: 0 4px 20px rgba(0,0,0,.08);
   --shadow-md: 0 8px 32px rgba(0,0,0,.12);
-  --bg-scrollbar: #cbd5e0;
-  --bg-scrollbar-hover: #a0aec0;
+  --bg-scrollbar: #94a3b8;
+  --bg-scrollbar-hover: #64748b;
   --bg-spinner-track: #dde5ed;
   --bg-progress-track: #dde5ed;
 
   --accent-bg-10: rgba(74,144,217,0.08);
-  --accent-bg-15: rgba(74,144,217,0.12);
   --accent-bg-20: rgba(74,144,217,0.18);
-  --accent-bg-30: rgba(74,144,217,0.25);
   --accent-glow: rgba(74,144,217,.3);
 
   --icon-search: #a0aec0;
@@ -220,7 +216,7 @@ body {
 }
 .header-search {
   width: 100%;
-  padding: 5px 26px 5px 28px;
+  padding: 8px 26px 8px 28px;
   border: none;
   border-radius: 14px;
   background: var(--bg-surface-4);
@@ -349,14 +345,17 @@ body {
 /* 设置页面 */
 .settings-page {
   flex: 1;
-  overflow-y: auto;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 0 0 12px;
 }
 .settings-page-header {
   display: flex;
   align-items: center;
   margin-bottom: 8px;
-  padding-bottom: 4px;
+  padding: 0 12px 4px 0;
+  flex-shrink: 0;
 }
 .settings-page-header .back-btn {
   background: none;
@@ -371,8 +370,15 @@ body {
 .settings-tabs {
   display: flex;
   gap: 0;
-  margin: 0 -12px 12px -12px;
+  margin: 0 0 6px -12px;
   padding: 0 12px;
+  flex-shrink: 0;
+}
+.settings-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 12px 0;
 }
 .settings-tab {
   background: none;
@@ -406,7 +412,7 @@ body {
 .settings-section-desc {
   font-size: 10px;
   color: var(--text-dark);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .settings-row {
   display: flex;
@@ -605,6 +611,97 @@ body {
   color: var(--text-disabled);
   font-size: 13px;
   gap: 8px;
+}
+
+/* 未登录欢迎页 */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.welcome::before {
+  content: "";
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-bg-20) 0%, transparent 70%);
+  pointer-events: none;
+}
+.welcome-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  animation: welcomeFloat 3s ease-in-out infinite;
+  filter: drop-shadow(0 4px 16px var(--accent-glow));
+}
+@keyframes welcomeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.welcome-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 6px;
+  letter-spacing: 2px;
+}
+.welcome-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.welcome-features {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+.welcome-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.welcome-feature .wf-icon {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.welcome-btn {
+  padding: 10px 32px;
+  border: none;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  box-shadow: 0 4px 16px var(--accent-glow);
+  letter-spacing: .5px;
+}
+.welcome-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px var(--accent-glow);
+}
+.welcome-btn:active { transform: translateY(0); }
+.welcome-footer {
+  margin-top: 20px;
+  font-size: 10px;
+  color: var(--text-faint);
 }
 .spinner {
   width: 16px; height: 16px;
@@ -863,12 +960,13 @@ body {
     <button class="settings-tab active" data-tab="display" onclick="switchSettingsTab('display', this)">显示设置</button>
     <button class="settings-tab" data-tab="system" onclick="switchSettingsTab('system', this)">系统设置</button>
   </div>
+  <div class="settings-content">
   <div class="settings-section" data-tab-content="display">
     <div class="settings-section-title">收藏夹显示</div>
     <div class="settings-section-desc">勾选要在列表中显示的收藏夹</div>
     <div class="settings-check-list" id="settings-check-list"></div>
     <div style="margin-top:8px;display:flex;gap:6px;">
-      <button class="btn btn-sm" onclick="toggleAllCheckboxes()">全不选</button>
+      <button class="btn btn-sm" onclick="toggleAllCheckboxes(event)">全不选</button>
       <button class="btn btn-primary btn-sm" onclick="saveSettings()">保存</button>
     </div>
   </div>
@@ -893,6 +991,7 @@ body {
     <div style="margin-top:8px;">
       <button class="btn btn-primary btn-sm" onclick="saveSystemSettings()">保存</button>
     </div>
+  </div>
   </div>
 </div>
 
@@ -922,7 +1021,7 @@ body {
     <button class="ctrl-btn" onclick="nextSong()" id="btn-next" title="下一首">⏭</button>
     <div class="volume-wrap">
       <span onclick="toggleMute()" id="vol-icon">🔊</span>
-      <input type="range" id="volume" min="0" max="100" value="10"
+      <input type="range" id="volume" min="0" max="100" value="5"
              oninput="setVolume(this.value)" onchange="hideVolTip()">
       <div class="vol-tip" id="vol-tip">10</div>
     </div>
@@ -975,7 +1074,7 @@ const MODE_ICONS = ["🔁", "🔂", "🔀"];
 const MODE_TITLES = ["列表循环", "单曲循环", "随机播放"];
 
 const audio = document.getElementById("audio");
-audio.volume = 0.1;
+audio.volume = 0.05;
 
 // ---- Cookie ----
 function showCookieDialog() {
@@ -1000,6 +1099,7 @@ async function saveCookie() {
     if (data.ok) {
       hideCookieDialog();
       toast("登录成功");
+      document.querySelector(".player").style.display = "";
       await loadUser();
       await loadFolders();
     } else {
@@ -1137,7 +1237,7 @@ function showSettings() {
     </label>`;
   }).join("");
   document.getElementById("main-area").style.display = "none";
-  document.getElementById("settings-page").style.display = "block";
+  document.getElementById("settings-page").style.display = "flex";
   loadSystemSettings();
 }
 
@@ -1255,11 +1355,11 @@ async function saveSystemSettings() {
   }
 }
 
-function toggleAllCheckboxes() {
+function toggleAllCheckboxes(e) {
   const checks = document.querySelectorAll("#settings-check-list input[type=checkbox]");
   const allChecked = Array.from(checks).every(cb => cb.checked);
   checks.forEach(cb => { cb.checked = !allChecked; });
-  const btn = event.target;
+  const btn = e.target;
   btn.textContent = allChecked ? "全选" : "全不选";
 }
 
@@ -1804,7 +1904,20 @@ document.addEventListener("keydown", e => {
     await loadHiddenFolders();
     await loadFolders();
   } else {
-    document.getElementById("folder-list").innerHTML = '<div class="empty">请点击右上角登录</div>';
+    document.getElementById("folder-list").innerHTML = `
+      <div class="welcome">
+        <div class="welcome-icon">🎵</div>
+        <div class="welcome-title">BIU</div>
+        <div class="welcome-subtitle">轻量级 Bilibili 音乐播放器</div>
+        <div class="welcome-features">
+          <div class="welcome-feature"><span class="wf-icon">📂</span>同步你的 B 站收藏夹</div>
+          <div class="welcome-feature"><span class="wf-icon">🎧</span>在线播放高品质音频</div>
+          <div class="welcome-feature"><span class="wf-icon">🔍</span>收藏夹内快速搜索歌曲</div>
+        </div>
+        <button class="welcome-btn" onclick="showCookieDialog()">登录 Bilibili</button>
+        <div class="welcome-footer">登录后即可同步你的收藏夹歌单</div>
+      </div>`;
+    document.querySelector(".player").style.display = "none";
   }
 })();
 </script>
