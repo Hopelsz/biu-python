@@ -18,8 +18,15 @@ from routes import WindowApi, register_routes
 
 
 # ---- 应用路径 & 日志 ----
-def _get_app_dir() -> str:
-    """获取应用目录（兼容 PyInstaller 打包）"""
+def _get_resource_dir() -> str:
+    """获取打包资源目录（templates/static/icon 等）"""
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.dirname(__file__)
+
+
+def _get_data_dir() -> str:
+    """获取用户数据目录（config.json 等读写文件，EXE 同级）"""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(__file__)
@@ -33,12 +40,12 @@ logging.basicConfig(
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 # ---- Flask 应用 ----
-_app_dir = _get_app_dir()
+_res_dir = _get_resource_dir()
 app = Flask(__name__,
-    template_folder=os.path.join(_app_dir, "templates"),
-    static_folder=os.path.join(_app_dir, "static"))
+    template_folder=os.path.join(_res_dir, "templates"),
+    static_folder=os.path.join(_res_dir, "static"))
 
-CONFIG_FILE = os.path.join(_get_app_dir(), "config.json")
+CONFIG_FILE = os.path.join(_get_data_dir(), "config.json")
 client = BiliClient()
 
 
@@ -67,14 +74,11 @@ register_routes(app, client, load_config, save_config)
 
 
 # ---- 系统托盘 ----
-def _get_tray_image(app_dir: str):
+def _get_tray_image():
     """加载托盘图标，优先使用 BIU.ico"""
     from PIL import Image
 
-    if getattr(sys, "frozen", False):
-        ico_path = os.path.join(sys._MEIPASS, "BIU.ico")
-    else:
-        ico_path = os.path.join(app_dir, "BIU.ico")
+    ico_path = os.path.join(_get_resource_dir(), "BIU.ico")
 
     if os.path.exists(ico_path):
         try:
@@ -96,9 +100,8 @@ def _get_tray_image(app_dir: str):
 class TrayManager:
     """管理系统托盘图标，实现关闭到托盘 + 播放控制"""
 
-    def __init__(self, window, app_dir: str, window_api):
+    def __init__(self, window, window_api):
         self._window = window
-        self._app_dir = app_dir
         self._api = window_api
         self._icon = None
         self._thread = None
@@ -161,7 +164,7 @@ class TrayManager:
         import ctypes
         import pystray
 
-        image = _get_tray_image(self._app_dir)
+        image = _get_tray_image()
         self._icon = pystray.Icon(
             "BIU", image, "BIU Music Player",
             menu=self._build_menu(),
@@ -363,7 +366,7 @@ if __name__ == "__main__":
     window_api.set_main(main_win)
 
     # 启动系统托盘
-    tray = TrayManager(main_win, _get_app_dir(), window_api)
+    tray = TrayManager(main_win, window_api)
     tray.start()
     window_api.set_on_minimize_to_tray(tray.minimize_to_tray)
 
