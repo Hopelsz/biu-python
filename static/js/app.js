@@ -165,6 +165,9 @@ async function loadFolders() {
         <span class="folder-cover-placeholder" data-mid="${f.id}">📁</span>
         <span class="folder-name">${esc(f.title)}</span>
         <span class="folder-count">${f.count}首</span>
+        <button class="folder-refresh" title="刷新" onclick="refreshFolder(event, ${f.id}, ${realIdx})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
         <span class="arrow">▶</span>
       </div>
       <div class="folder-content" data-mid="${f.id}" data-loaded="0"></div>
@@ -207,6 +210,9 @@ function showSettings() {
   }).join("");
   document.getElementById("main-area").style.display = "none";
   document.getElementById("settings-page").style.display = "flex";
+  // 始终切到"显示设置"标签
+  const displayTab = document.querySelector('.settings-tab[data-tab="display"]');
+  if (displayTab) switchSettingsTab("display", displayTab);
   loadSystemSettings();
 }
 
@@ -260,20 +266,20 @@ async function loadSystemSettings() {
     const data = await resp.json();
     const ff = data.font_family || "default";
     const theme = data.theme || "dark";
-    document.getElementById("sys-font-family").value = ff;
+    setFontSelect(ff);
     applyFontSettings(ff);
     applyTheme(theme);
     // 备注显示开关
     displayRemark = !!data.display_remark;
     document.getElementById("sys-display-remark").checked = displayRemark;
-    // 作者显示开关
-    showAuthor = data.show_author !== false;
-    document.getElementById("sys-show-author").checked = showAuthor;
+    // UP显示开关
+    showUp = data.show_up !== false;
+    document.getElementById("sys-show-up").checked = showUp;
     // 时长显示开关
     showDuration = data.show_duration !== false;
     document.getElementById("sys-show-duration").checked = showDuration;
     // 同步 body CSS class（性能优化：替代全量重新渲染）
-    document.body.classList.toggle("hide-author", !showAuthor);
+    document.body.classList.toggle("hide-up", !showUp);
     document.body.classList.toggle("hide-duration", !showDuration);
   } catch(e) {}
 }
@@ -297,9 +303,43 @@ function applyFontSettings(ff) {
   }
 }
 
-document.getElementById("sys-font-family").addEventListener("change", function() {
-  applyFontSettings(this.value);
-});
+function getFontSelect() {
+  const el = document.getElementById("sys-font-family");
+  return el ? el.getAttribute("data-value") || "default" : "default";
+}
+
+function setFontSelect(val) {
+  const el = document.getElementById("sys-font-family");
+  if (!el) return;
+  el.setAttribute("data-value", val);
+  const trigger = el.querySelector(".custom-select-trigger");
+  const text = el.querySelector(`.custom-select-opt[data-value="${val}"]`);
+  if (trigger && text) trigger.textContent = text.textContent;
+  // 高亮当前项
+  el.querySelectorAll(".custom-select-opt").forEach(o => o.classList.toggle("active", o.getAttribute("data-value") === val));
+}
+
+function initFontSelect() {
+  const el = document.getElementById("sys-font-family");
+  if (!el) return;
+  const trigger = el.querySelector(".custom-select-trigger");
+  // 点触发器：开关
+  trigger.addEventListener("click", e => { e.stopPropagation(); el.classList.toggle("open"); });
+  // 点选项
+  el.querySelectorAll(".custom-select-opt").forEach(opt => {
+    opt.addEventListener("click", e => {
+      e.stopPropagation();
+      const val = opt.getAttribute("data-value");
+      setFontSelect(val);
+      applyFontSettings(val);
+      el.classList.remove("open");
+    });
+  });
+  // 点外部关闭
+  document.addEventListener("click", () => el.classList.remove("open"));
+}
+
+initFontSelect();
 document.getElementById("theme-toggle-btn").addEventListener("click", function() {
   const current = document.body.getAttribute("data-theme") || "dark";
   const next = current === "dark" ? "light" : "dark";
@@ -321,20 +361,20 @@ async function saveThemeOnly(theme) {
 }
 
 async function saveSystemSettings() {
-  const ff = document.getElementById("sys-font-family").value;
+  const ff = getFontSelect();
   const theme = document.body.getAttribute("data-theme") || "dark";
   const dr = document.getElementById("sys-display-remark").checked;
-  const sa = document.getElementById("sys-show-author").checked;
+  const su = document.getElementById("sys-show-up").checked;
   const sd = document.getElementById("sys-show-duration").checked;
   try {
     await fetch("/api/system-settings", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({font_family: ff, theme: theme, display_remark: dr, show_author: sa, show_duration: sd})
+      body: JSON.stringify({font_family: ff, theme: theme, display_remark: dr, show_up: su, show_duration: sd})
     });
     applyFontSettings(ff);
     applyRemarkDisplay(dr);
-    applyAuthorDisplay(sa);
+    applyUpDisplay(su);
     applyDurationDisplay(sd);
     toast("设置已保存");
   } catch(e) {
@@ -357,23 +397,23 @@ async function toggleRemarkDisplay() {
   } catch(e) {}
 }
 
-async function toggleShowAuthor() {
-  const cb = document.getElementById("sys-show-author");
+async function toggleShowUp() {
+  const cb = document.getElementById("sys-show-up");
   cb.checked = !cb.checked;
-  showAuthor = cb.checked;
-  applyAuthorDisplay(showAuthor);
+  showUp = cb.checked;
+  applyUpDisplay(showUp);
   try {
     await fetch("/api/system-settings", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({show_author: showAuthor})
+      body: JSON.stringify({show_up: showUp})
     });
   } catch(e) {}
 }
 
-function applyAuthorDisplay(val) {
-  showAuthor = val;
-  document.body.classList.toggle("hide-author", !val);
+function applyUpDisplay(val) {
+  showUp = val;
+  document.body.classList.toggle("hide-up", !val);
 }
 
 async function toggleShowDuration() {
@@ -498,12 +538,37 @@ async function loadFolderContent(mediaId, container) {
   }
 }
 
+async function refreshFolder(e, mediaId, idx) {
+  e.stopPropagation();
+  const container = document.querySelector(`.folder-content[data-mid="${mediaId}"]`);
+  if (!container) return;
+  // 确保展开
+  const itemEl = document.querySelector(`.folder-item[data-idx="${idx}"]`);
+  const contentEl = itemEl ? itemEl.parentElement.querySelector(".folder-content") : null;
+  if (contentEl && !contentEl.classList.contains("expanded")) {
+    contentEl.classList.add("expanded");
+    contentEl.dataset.loaded = "0";
+    if (itemEl) { itemEl.classList.add("expanded"); itemEl.querySelector(".arrow").textContent = "▼"; }
+    if (itemEl) itemEl.parentElement.classList.add("expanded");
+  }
+  // 给按钮加旋转动画
+  const btn = e.currentTarget;
+  btn.classList.add("spinning");
+  try {
+    await loadFolderContent(mediaId, container);
+  } finally {
+    btn.classList.remove("spinning");
+  }
+}
+
 // ---- 歌曲备注 ----
 let remarks = {};
 let displayRemark = false;
-let showAuthor = true;
+let showUp = true;
 let showDuration = true;
-let menuBvid = ""; // 当前右键菜单所在的 bvid
+let menuBvid = "";  // 当前右键菜单所在的 bvid
+let menuIdx = -1;   // 当前右键菜单歌曲的索引
+let menuMediaId = ""; // 当前右键菜单歌曲所属收藏夹 ID
 let _savingRemark = false; // 防止重复保存
 
 async function loadRemarks() {
@@ -525,18 +590,22 @@ function applyRemarkDisplay(val) {
 }
 
 // ---- 右键菜单 ----
-function showRemarkMenu(e, bvid) {
+function showRemarkMenu(e, bvid, idx, mediaId) {
   e.preventDefault();
   e.stopPropagation();
   menuBvid = bvid;
+  menuIdx = idx;
+  menuMediaId = mediaId;
   const menu = document.getElementById("remark-menu");
   const hasRemark = !!remarks[bvid];
   document.getElementById("rm-delete").style.display = hasRemark ? "" : "none";
   menu.style.display = "block";
   // 定位在鼠标附近，防止出界
   let x = e.clientX, y = e.clientY;
+  // 菜单高度：播放(32) + 编辑(32) + 删除(32 if hasRemark else 0) = 64~96px
+  const menuH = hasRemark ? 96 : 64;
   if (x + 120 > window.innerWidth) x -= 120;
-  if (y + (hasRemark ? 64 : 32) > window.innerHeight) y -= (hasRemark ? 64 : 32);
+  if (y + menuH > window.innerHeight) y -= menuH;
   menu.style.left = x + "px";
   menu.style.top = y + "px";
 }
@@ -544,6 +613,16 @@ function showRemarkMenu(e, bvid) {
 function hideRemarkMenu() {
   document.getElementById("remark-menu").style.display = "none";
   menuBvid = "";
+  menuIdx = -1;
+  menuMediaId = "";
+}
+
+function playFromMenu() {
+  const idx = menuIdx;
+  const mediaId = menuMediaId;
+  hideRemarkMenu();
+  if (idx < 0 || !mediaId) return;
+  playFolderSong(idx, mediaId);
 }
 
 function startEditRemarkFromMenu() {
@@ -684,7 +763,7 @@ function renderFolderContent(mediaId, container) {
     html += `<div class="fc-song-item${isPlaying ? " playing" : ""}"
                   data-idx="${i}" data-bvid="${esc(bvid)}"
                   ondblclick="playFolderSong(${i}, '${mediaId}')"
-                  oncontextmenu="showRemarkMenu(event, '${esc(bvid)}')"
+                  oncontextmenu="showRemarkMenu(event, '${esc(bvid)}', ${i}, '${mediaId}')"
                   title="${esc(s.title)}">
       <span class="idx">${i + 1}</span>
       <span class="s-title" data-remark-bvid="${esc(bvid)}">

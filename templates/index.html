@@ -26,8 +26,12 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- 备注右键菜单 -->
+<!-- 歌曲右键菜单 -->
 <div id="remark-menu" class="remark-menu">
+  <button class="rm-item" id="rm-play" onclick="playFromMenu()">
+    <svg class="rm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    <span>播放</span>
+  </button>
   <button class="rm-item" id="rm-edit" onclick="startEditRemarkFromMenu()">
     <svg class="rm-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
     <span>编辑备注</span>
@@ -64,8 +68,14 @@
   <div class="header-top-right">
     <img id="user-avatar" class="user-avatar" src="" alt="" style="display:none" title="" onclick="toggleAvatarMenu(event)">
     <div class="avatar-dropdown" id="avatar-dropdown">
-      <button class="dd-item" onclick="showSettings();document.getElementById('avatar-dropdown').classList.remove('show')">设置</button>
-      <button class="dd-item danger" onclick="logout()">退出登录</button>
+      <button class="dd-item" onclick="showSettings();document.getElementById('avatar-dropdown').classList.remove('show')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>设置</span>
+      </button>
+      <button class="dd-item danger" onclick="logout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>退出登录</span>
+      </button>
     </div>
     <button class="btn-login" id="login-btn" onclick="showCookieDialog()" title="登录">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block">
@@ -94,8 +104,8 @@
       <button class="btn btn-primary btn-sm" onclick="saveSettings()">保存</button>
     </div>
     <hr class="settings-divider">
-    <div class="settings-section-title">歌曲名称显示</div>
-    <div class="settings-section-desc">优先显示备注名（右键歌曲可编辑备注）</div>
+    <div class="settings-section-title">歌曲列表显示</div>
+    <div class="settings-section-desc">自定义列表每行展示的附加信息</div>
     <div class="settings-row">
       <span class="settings-label">显示备注名</span>
       <span class="toggle-switch" onclick="toggleRemarkDisplay()">
@@ -106,9 +116,9 @@
       </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">显示作者</span>
-      <span class="toggle-switch" onclick="toggleShowAuthor()">
-        <input type="checkbox" id="sys-show-author" style="display:none">
+      <span class="settings-label">显示UP</span>
+      <span class="toggle-switch" onclick="toggleShowUp()">
+        <input type="checkbox" id="sys-show-up" style="display:none">
         <span class="toggle-track">
           <span class="toggle-thumb"></span>
         </span>
@@ -129,14 +139,17 @@
     <div class="settings-section-desc">调整界面字体与大小</div>
     <div class="settings-row">
       <span class="settings-label">字体</span>
-      <select id="sys-font-family">
-        <option value="default">系统默认</option>
-        <option value="noto-sans">Noto Sans SC</option>
-        <option value="noto-serif">Noto Serif SC</option>
-        <option value="wenkai">霞鹜文楷</option>
-        <option value="xiaowei">站酷小薇</option>
-        <option value="mono">等宽字体</option>
-      </select>
+      <div class="custom-select" id="sys-font-family">
+        <span class="custom-select-trigger" data-value="default">系统默认</span>
+        <div class="custom-select-drop">
+          <div class="custom-select-opt" data-value="default">系统默认</div>
+          <div class="custom-select-opt" data-value="noto-sans" style="font-family:'Noto Sans SC',sans-serif">Noto Sans SC</div>
+          <div class="custom-select-opt" data-value="noto-serif" style="font-family:'Noto Serif SC',serif">Noto Serif SC</div>
+          <div class="custom-select-opt" data-value="wenkai" style="font-family:'LXGW WenKai',serif">霞鹜文楷</div>
+          <div class="custom-select-opt" data-value="xiaowei" style="font-family:'ZCOOL XiaoWei',serif">站酷小薇</div>
+          <div class="custom-select-opt" data-value="mono" style="font-family:'Courier New',monospace">等宽字体</div>
+        </div>
+      </div>
     </div>
     <div class="settings-preview" id="font-preview">
       <div class="preview-label">预览</div>

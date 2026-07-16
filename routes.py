@@ -33,6 +33,14 @@ class WindowApi:
         """设置最小化到托盘的钩子；设置后 minimize/close 都会走托盘"""
         self._on_minimize_to_tray = callback
 
+    def restore(self):
+        """恢复主窗口（从托盘或被其他实例唤醒）"""
+        if self._main_window:
+            try:
+                self._main_window.show()
+            except Exception:
+                pass
+
     def minimize(self):
         """正常最小化到任务栏"""
         if self._main_window:
@@ -79,14 +87,22 @@ class WindowApi:
         return {"title": "未在播放", "isPlaying": False}
 
 
-def register_routes(app, client, load_config, save_config):
+def register_routes(app, client, load_config, save_config, window_api=None):
     """向 Flask app 注册所有 API 路由"""
+    _api = window_api
 
     # ---- 主页 ----
     @app.route("/")
     def index():
         from flask import render_template
         return render_template("index.html")
+
+    # ---- 单实例：第二实例唤醒主窗口 ----
+    @app.route("/api/restore", methods=["POST"])
+    def api_restore():
+        if _api:
+            _api.restore()
+        return jsonify({"ok": True})
 
     # ---- 登录 / 登出 ----
     @app.route("/api/login", methods=["POST"])
@@ -181,7 +197,7 @@ def register_routes(app, client, load_config, save_config):
                 "font_family": sys_cfg.get("font_family", "default"),
                 "theme": sys_cfg.get("theme", "dark"),
                 "display_remark": sys_cfg.get("display_remark", False),
-                "show_author": sys_cfg.get("show_author", True),
+                "show_up": sys_cfg.get("show_up", True),
                 "show_duration": sys_cfg.get("show_duration", True),
             })
         else:
@@ -190,7 +206,7 @@ def register_routes(app, client, load_config, save_config):
                 "font_family": data.get("font_family", sys_cfg.get("font_family", "default")),
                 "theme": data.get("theme", sys_cfg.get("theme", "dark")),
                 "display_remark": data.get("display_remark", sys_cfg.get("display_remark", False)),
-                "show_author": data.get("show_author", sys_cfg.get("show_author", True)),
+                "show_up": data.get("show_up", sys_cfg.get("show_up", True)),
                 "show_duration": data.get("show_duration", sys_cfg.get("show_duration", True)),
             }
             save_config(cfg)

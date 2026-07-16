@@ -69,9 +69,6 @@ if cfg.get("sessdata"):
 if cfg.get("buvid"):
     client._buvid = cfg["buvid"]
 
-# ---- 注册路由 ----
-register_routes(app, client, load_config, save_config)
-
 
 # ---- 系统托盘 ----
 def _get_tray_image():
@@ -278,6 +275,18 @@ if __name__ == "__main__":
     import socket
     import ctypes as _ct
 
+    # ---- 单实例检测：尝试连接已运行的实例 ----
+    # 用 urllib 代替 requests，避免导入 heavy library 拖慢启动速度
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:27232/api/restore", data=b"", method="POST")
+        urllib.request.urlopen(req, timeout=0.5)
+        # 连上了说明已有实例，恢复其窗口然后退出
+        os._exit(0)
+    except Exception:
+        # 连接失败，没有其他实例在运行，继续启动
+        pass
+
     # ---- 确保 WebView2 运行时可用 ----
     if sys.platform == "win32":
         _ensure_webview2()
@@ -299,6 +308,10 @@ if __name__ == "__main__":
     print("=" * 50)
     print("  BIU Music Player (桌面版)")
     print("=" * 50)
+
+    # ---- 创建 API 对象 & 注册路由（必须在 Flask 启动前完成）----
+    window_api = WindowApi()
+    register_routes(app, client, load_config, save_config, window_api)
 
     # ---- Flask 启动 ----
     flask_ready = threading.Event()
@@ -327,11 +340,10 @@ if __name__ == "__main__":
         print("端口 27232 可能被占用。请在任务管理器中结束残留的 Python 进程后重试。")
         os._exit(1)
 
-    import requests as _rq
     for _ in range(20):
         time.sleep(0.1)
         try:
-            _rq.get("http://127.0.0.1:27232", timeout=0.5)
+            urllib.request.urlopen("http://127.0.0.1:27232", timeout=0.5)
             break
         except Exception:
             continue
@@ -342,8 +354,6 @@ if __name__ == "__main__":
     # 屏幕居中
     screen_w = _ct.windll.user32.GetSystemMetrics(0)
     screen_h = _ct.windll.user32.GetSystemMetrics(1)
-
-    window_api = WindowApi()
 
     win_w, win_h = 300, 720
     center_x = (screen_w - win_w) // 2
