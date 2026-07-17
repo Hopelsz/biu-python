@@ -247,6 +247,20 @@ def register_routes(app, client, load_config, save_config, window_api=None):
             logger.error("API /api/folder-content error: %s", e)
             return jsonify({"items": [], "has_more": False, "error": str(e)})
 
+    # ---- 全站搜索 ----
+    @app.route("/api/search")
+    def api_search():
+        q = request.args.get("q", "").strip()
+        page = request.args.get("page", 1, type=int)
+        if not q:
+            return jsonify({"items": [], "has_more": False, "total": 0, "page": 1})
+        try:
+            result = client.search_videos(q, page)
+            return jsonify(result)
+        except Exception as e:
+            logger.error("API /api/search error: %s", e)
+            return jsonify({"items": [], "has_more": False, "total": 0, "page": page})
+
     # ---- 音频代理 ----
     @app.route("/api/audio")
     def api_audio():

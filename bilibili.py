@@ -280,6 +280,55 @@ class BiliClient:
             logger.error("fav content error: %s", e)
             return {"items": [], "has_more": False, "total": 0}
 
+    # ---- 搜索 ----
+
+    def search_videos(self, keyword: str, page: int = 1) -> dict:
+        """搜索全站视频，返回 {items, has_more, total, page}"""
+        self._ensure_wbi_keys()
+        params = self._sign_params({
+            "search_type": "video",
+            "keyword": keyword,
+            "page": page,
+            "page_size": 20,
+        })
+        try:
+            resp = self.session.get(
+                f"{API_BASE}/x/web-interface/wbi/search/type",
+                params=params,
+                timeout=10,
+            )
+            data = resp.json()
+            logger.debug("search: code=%s keyword=%s page=%s", data.get("code"), keyword, page)
+            if data.get("code") != 0:
+                return {"items": [], "has_more": False, "total": 0, "page": page}
+
+            result = data.get("data", {})
+            items = []
+            for v in result.get("result") or []:
+                # 解析时长字符串（如 "3:45"）→ 秒数
+                dur_str = v.get("duration", "0:00")
+                dur_parts = dur_str.split(":")
+                dur_sec = int(dur_parts[0]) * 60 + int(dur_parts[1]) if len(dur_parts) == 2 else 0
+
+                items.append({
+                    "bvid": v.get("bvid", ""),
+                    "title": v.get("title", "").replace('<em class="keyword">', '').replace('</em>', ''),
+                    "author": v.get("author", ""),
+                    "duration": dur_str,
+                    "duration_sec": dur_sec,
+                    "cover": v.get("pic", ""),
+                    "play": v.get("play", 0),
+                })
+
+            total = result.get("numResults", 0)
+            num_pages = result.get("numPages", 0)
+            has_more = page < num_pages
+            logger.info("search: found %s items, total=%s, has_more=%s", len(items), total, has_more)
+            return {"items": items, "has_more": has_more, "total": total, "page": page}
+        except Exception as e:
+            logger.error("search error: %s", e)
+            return {"items": [], "has_more": False, "total": 0, "page": page}
+
     # ---- 播放地址 ----
 
     def get_video_cid(self, bvid: str) -> int | None:

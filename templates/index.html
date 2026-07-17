@@ -60,10 +60,21 @@
 <div id="content-wrap">
 <!-- 顶部 -->
 <div class="header">
-  <div class="search-wrap">
+  <div class="search-wrap" id="search-wrap">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input class="header-search" id="header-search" type="text" placeholder="搜索歌曲..." oninput="filterSongs();toggleSearchClear()">
+    <input class="header-search" id="header-search" type="text" placeholder="搜索 B 站视频..." oninput="toggleSearchClear()" onkeydown="onSearchKeydown(event)">
     <button class="search-clear" id="search-clear" onclick="clearSearch()" title="清空">✕</button>
+    <!-- 搜索蒙层 -->
+    <div class="search-backdrop" id="search-backdrop" onclick="hideSearchPanel()"></div>
+    <!-- 搜索面板 -->
+    <div class="search-panel" id="search-panel">
+      <div class="sp-loading" id="sp-loading"><div class="spinner"></div> 搜索中...</div>
+      <div class="sp-no-results" id="sp-no-results">没有找到相关视频</div>
+      <div class="sp-items" id="sp-items"></div>
+      <div class="sp-more" id="sp-more" onclick="loadMoreSearchResults()" style="display:none">
+        <span class="sp-more-arrow"></span>加载更多
+      </div>
+    </div>
   </div>
   <div class="header-top-right">
     <img id="user-avatar" class="user-avatar" src="" alt="" style="display:none" title="" onclick="toggleAvatarMenu(event)">
