@@ -1,14 +1,34 @@
+// ---- DOM 辅助 ----
+const $ = (id) => document.getElementById(id);
+const $$ = (sel, ctx) => (ctx || document).querySelector(sel);
+const $$$ = (sel, ctx) => (ctx || document).querySelectorAll(sel);
+
+// 高频 DOM 缓存（热路径如 timeupdate/键盘事件中频繁使用）
+const _playerEl = $$(".player");
+const _progress = $("progress");
+const _curTime = $("cur-time");
+const _durTime = $("dur-time");
+const _nowTitle = $("now-title");
+const _folderSrc = $("folder-src");
+const _volume = $("volume");
+const _volTip = $("vol-tip");
+const _btnPlay = $("btn-play");
+const _btnMode = $("btn-mode");
+const _volIcon = $("vol-icon");
+const _folderList = $("folder-list");
+const _headerSearch = $("header-search");
+const _titleBar = $$(".title-bar");
+
 // ---- 窗口拖拽 ----
 (function() {
-  const titleBar = document.querySelector(".title-bar");
   let dragging = false, offsetX = 0, offsetY = 0;
 
-  titleBar.addEventListener("mousedown", (e) => {
-    if (e.target.closest(".win-btn")) return; // 不拦截按钮点击
+  _titleBar.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".win-btn")) return;
     dragging = true;
     offsetX = e.screenX - window.screenX;
     offsetY = e.screenY - window.screenY;
-    titleBar.style.cursor = "grabbing";
+    _titleBar.style.cursor = "grabbing";
   });
 
   window.addEventListener("mousemove", (e) => {
@@ -21,7 +41,7 @@
   window.addEventListener("mouseup", () => {
     if (dragging) {
       dragging = false;
-      titleBar.style.cursor = "default";
+      _titleBar.style.cursor = "default";
     }
   });
 })();
@@ -40,20 +60,20 @@ let consecutiveErrors = 0; // 连续播放失败计数
 const MODE_ICONS = ["🔁", "🔂", "🔀"];
 const MODE_TITLES = ["列表循环", "单曲循环", "随机播放"];
 
-const audio = document.getElementById("audio");
+const audio = $("audio");
 audio.volume = 0.05;
 updateVolIcon();
 updateVolSlider(5);
 
 // ---- Cookie ----
 function showCookieDialog() {
-  document.getElementById("cookie-dialog").style.display = "flex";
+  $("cookie-dialog").style.display = "flex";
 }
 function hideCookieDialog() {
-  document.getElementById("cookie-dialog").style.display = "none";
+  $("cookie-dialog").style.display = "none";
 }
 async function saveCookie() {
-  const val = document.getElementById("sessdata-input").value.trim();
+  const val = $("sessdata-input").value.trim();
   if (!val) {
     toast("请输入 SESSDATA");
     return;
@@ -68,7 +88,7 @@ async function saveCookie() {
     if (data.ok) {
       hideCookieDialog();
       toast("登录成功");
-      document.querySelector(".player").style.display = "";
+      _playerEl.style.display = "";
       await loadUser();
       await loadFolders();
     } else {
@@ -82,7 +102,7 @@ async function saveCookie() {
 // ---- Toast ----
 let toastTimer;
 function toast(msg) {
-  const el = document.getElementById("toast");
+  const el = $("toast");
   el.textContent = msg;
   el.classList.add("show");
   clearTimeout(toastTimer);
@@ -93,8 +113,8 @@ function toast(msg) {
 async function loadUser() {
   const resp = await fetch("/api/user");
   const data = await resp.json();
-  const avatarEl = document.getElementById("user-avatar");
-  const loginBtn = document.getElementById("login-btn");
+  const avatarEl = $("user-avatar");
+  const loginBtn = $("login-btn");
   if (data.logged_in) {
     const uname = data.uname || ("UID:" + data.mid);
     loginBtn.style.display = "none";
@@ -103,7 +123,7 @@ async function loadUser() {
       avatarEl.title = uname;
       avatarEl.style.display = "block";
     }
-    document.getElementById("header-search").placeholder = "搜索歌曲...";
+    $("header-search").placeholder = "搜索歌曲...";
   } else {
     loginBtn.style.display = "";
     avatarEl.style.display = "none";
@@ -113,12 +133,8 @@ async function loadUser() {
 
 function toggleAvatarMenu(e) {
   e.stopPropagation();
-  document.getElementById("avatar-dropdown").classList.toggle("show");
+  $("avatar-dropdown").classList.toggle("show");
 }
-
-document.addEventListener("click", () => {
-  document.getElementById("avatar-dropdown").classList.remove("show");
-});
 
 async function logout() {
   try {
@@ -141,7 +157,7 @@ async function loadHiddenFolders() {
 
 // ---- 收藏夹 ----
 async function loadFolders() {
-  const list = document.getElementById("folder-list");
+  const list = $("folder-list");
   list.innerHTML = '<div class="loading"><div class="spinner"></div>加载中...</div>';
   const resp = await fetch("/api/folders");
   folders = await resp.json();
@@ -188,7 +204,7 @@ async function loadFolderCovers(folderList) {
       const resp = await fetch(`/api/folder-info?media_id=${f.id}`);
       const info = await resp.json();
       if (info && info.cover) {
-        const placeholder = document.querySelector(`.folder-cover-placeholder[data-mid="${f.id}"]`);
+        const placeholder = $$(`.folder-cover-placeholder[data-mid="${f.id}"]`);
         if (placeholder) {
           placeholder.outerHTML = `<img class="folder-cover" src="${esc(info.cover)}" onerror="this.replaceWith(document.createTextNode('📁'))" />`;
         }
@@ -199,7 +215,7 @@ async function loadFolderCovers(folderList) {
 
 // ---- 设置页面 ----
 function showSettings() {
-  const list = document.getElementById("settings-check-list");
+  const list = $("settings-check-list");
   list.innerHTML = folders.map(f => {
     const checked = !hiddenFolders.includes(f.id);
     return `<label class="settings-item">
@@ -208,29 +224,29 @@ function showSettings() {
       <span class="s-count">${f.count}首</span>
     </label>`;
   }).join("");
-  document.getElementById("main-area").style.display = "none";
-  document.getElementById("settings-page").style.display = "flex";
+  $("main-area").style.display = "none";
+  $("settings-page").style.display = "flex";
   // 始终切到"显示设置"标签
-  const displayTab = document.querySelector('.settings-tab[data-tab="display"]');
+  const displayTab = $$('.settings-tab[data-tab="display"]');
   if (displayTab) switchSettingsTab("display", displayTab);
   loadSystemSettings();
 }
 
 function hideSettings() {
-  document.getElementById("settings-page").style.display = "none";
-  document.getElementById("main-area").style.display = "";
+  $("settings-page").style.display = "none";
+  $("main-area").style.display = "";
 }
 
 function switchSettingsTab(tabName, el) {
-  document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".settings-section[data-tab-content]").forEach(s => s.style.display = "none");
+  $$$(".settings-tab").forEach(t => t.classList.remove("active"));
+  $$$(".settings-section[data-tab-content]").forEach(s => s.style.display = "none");
   el.classList.add("active");
-  const panel = document.querySelector(`.settings-section[data-tab-content="${tabName}"]`);
+  const panel = $$(`.settings-section[data-tab-content="${tabName}"]`);
   if (panel) panel.style.display = "block";
 }
 
 async function saveSettings() {
-  const checks = document.querySelectorAll("#settings-check-list input[type=checkbox]");
+  const checks = $$$("#settings-check-list input[type=checkbox]");
   const newHidden = [];
   checks.forEach(cb => {
     if (!cb.checked) newHidden.push(parseInt(cb.dataset.fid));
@@ -271,13 +287,13 @@ async function loadSystemSettings() {
     applyTheme(theme);
     // 备注显示开关
     displayRemark = !!data.display_remark;
-    document.getElementById("sys-display-remark").checked = displayRemark;
+    $("sys-display-remark").checked = displayRemark;
     // UP显示开关
     showUp = data.show_up !== false;
-    document.getElementById("sys-show-up").checked = showUp;
+    $("sys-show-up").checked = showUp;
     // 时长显示开关
     showDuration = data.show_duration !== false;
-    document.getElementById("sys-show-duration").checked = showDuration;
+    $("sys-show-duration").checked = showDuration;
     // 同步 body CSS class（性能优化：替代全量重新渲染）
     document.body.classList.toggle("hide-up", !showUp);
     document.body.classList.toggle("hide-duration", !showDuration);
@@ -286,7 +302,7 @@ async function loadSystemSettings() {
 
 function applyTheme(theme) {
   document.body.setAttribute("data-theme", theme);
-  const btn = document.getElementById("theme-toggle-btn");
+  const btn = $("theme-toggle-btn");
   if (btn) {
     btn.title = theme === "light" ? "切换深色模式" : "切换浅色模式";
   }
@@ -296,7 +312,7 @@ function applyFontSettings(ff) {
   const family = FONT_FAMILIES[ff] || FONT_FAMILIES["default"];
   document.body.style.fontFamily = family;
   // 预览
-  const preview = document.getElementById("font-preview");
+  const preview = $("font-preview");
   if (preview) {
     preview.querySelector(".preview-text").style.fontFamily = family;
     preview.querySelector(".preview-text").style.fontSize = "14px";
@@ -304,12 +320,12 @@ function applyFontSettings(ff) {
 }
 
 function getFontSelect() {
-  const el = document.getElementById("sys-font-family");
+  const el = $("sys-font-family");
   return el ? el.getAttribute("data-value") || "default" : "default";
 }
 
 function setFontSelect(val) {
-  const el = document.getElementById("sys-font-family");
+  const el = $("sys-font-family");
   if (!el) return;
   el.setAttribute("data-value", val);
   const trigger = el.querySelector(".custom-select-trigger");
@@ -320,7 +336,7 @@ function setFontSelect(val) {
 }
 
 function initFontSelect() {
-  const el = document.getElementById("sys-font-family");
+  const el = $("sys-font-family");
   if (!el) return;
   const trigger = el.querySelector(".custom-select-trigger");
   // 点触发器：开关
@@ -335,12 +351,10 @@ function initFontSelect() {
       el.classList.remove("open");
     });
   });
-  // 点外部关闭
-  document.addEventListener("click", () => el.classList.remove("open"));
 }
 
 initFontSelect();
-document.getElementById("theme-toggle-btn").addEventListener("click", function() {
+$("theme-toggle-btn").addEventListener("click", function() {
   const current = document.body.getAttribute("data-theme") || "dark";
   const next = current === "dark" ? "light" : "dark";
   applyTheme(next);
@@ -363,9 +377,9 @@ async function saveThemeOnly(theme) {
 async function saveSystemSettings() {
   const ff = getFontSelect();
   const theme = document.body.getAttribute("data-theme") || "dark";
-  const dr = document.getElementById("sys-display-remark").checked;
-  const su = document.getElementById("sys-show-up").checked;
-  const sd = document.getElementById("sys-show-duration").checked;
+  const dr = $("sys-display-remark").checked;
+  const su = $("sys-show-up").checked;
+  const sd = $("sys-show-duration").checked;
   try {
     await fetch("/api/system-settings", {
       method: "POST",
@@ -383,7 +397,7 @@ async function saveSystemSettings() {
 }
 
 async function toggleRemarkDisplay() {
-  const cb = document.getElementById("sys-display-remark");
+  const cb = $("sys-display-remark");
   cb.checked = !cb.checked;
   const dr = cb.checked;
   applyRemarkDisplay(dr);
@@ -398,7 +412,7 @@ async function toggleRemarkDisplay() {
 }
 
 async function toggleShowUp() {
-  const cb = document.getElementById("sys-show-up");
+  const cb = $("sys-show-up");
   cb.checked = !cb.checked;
   showUp = cb.checked;
   applyUpDisplay(showUp);
@@ -417,7 +431,7 @@ function applyUpDisplay(val) {
 }
 
 async function toggleShowDuration() {
-  const cb = document.getElementById("sys-show-duration");
+  const cb = $("sys-show-duration");
   cb.checked = !cb.checked;
   showDuration = cb.checked;
   applyDurationDisplay(showDuration);
@@ -436,7 +450,7 @@ function applyDurationDisplay(val) {
 }
 
 function toggleAllCheckboxes(e) {
-  const checks = document.querySelectorAll("#settings-check-list input[type=checkbox]");
+  const checks = $$$("#settings-check-list input[type=checkbox]");
   const allChecked = Array.from(checks).every(cb => cb.checked);
   checks.forEach(cb => { cb.checked = !allChecked; });
   const btn = e.target;
@@ -446,29 +460,28 @@ function toggleAllCheckboxes(e) {
 // ---- 播放模式 ----
 function togglePlayMode() {
   playMode = (playMode + 1) % 3;
-  const btn = document.getElementById("btn-mode");
-  btn.textContent = MODE_ICONS[playMode];
-  btn.title = MODE_TITLES[playMode];
-  btn.classList.toggle("loop-one", playMode === 1);
+  _btnMode.textContent = MODE_ICONS[playMode];
+  _btnMode.title = MODE_TITLES[playMode];
+  _btnMode.classList.toggle("loop-one", playMode === 1);
 }
 
 // ---- 折叠面板：点击展开/收起收藏夹内容 ----
 let folderContents = {}; // { media_id: { items:[], hasMore:bool, page:int, title:str } }
 
 function collapseAll() {
-  document.querySelectorAll(".folder-content.expanded").forEach(el => {
+  $$$(".folder-content.expanded").forEach(el => {
     el.classList.remove("expanded");
   });
-  document.querySelectorAll(".folder-item.expanded").forEach(el => el.classList.remove("expanded"));
-  document.querySelectorAll(".folder-wrap.expanded").forEach(el => el.classList.remove("expanded"));
-  document.querySelectorAll(".folder-item .arrow").forEach(el => el.textContent = "▶");
+  $$$(".folder-item.expanded").forEach(el => el.classList.remove("expanded"));
+  $$$(".folder-wrap.expanded").forEach(el => el.classList.remove("expanded"));
+  $$$(".folder-item .arrow").forEach(el => el.textContent = "▶");
 }
 
 function toggleFolder(idx) {
   const folder = folders[idx];
   if (!folder) return;
 
-  const itemEl = document.querySelector(`.folder-item[data-idx="${idx}"]`);
+  const itemEl = $$(`.folder-item[data-idx="${idx}"]`);
   if (!itemEl) return;
   const contentEl = itemEl.parentElement.querySelector(".folder-content");
   if (!contentEl) return;
@@ -493,7 +506,7 @@ function toggleFolder(idx) {
   arrowEl.textContent = "▼";
 
   // 高亮当前项
-  document.querySelectorAll(".folder-item").forEach(el => el.classList.remove("active"));
+  $$$(".folder-item").forEach(el => el.classList.remove("active"));
   itemEl.classList.add("active");
   currentFolder = folder;
 
@@ -540,10 +553,10 @@ async function loadFolderContent(mediaId, container) {
 
 async function refreshFolder(e, mediaId, idx) {
   e.stopPropagation();
-  const container = document.querySelector(`.folder-content[data-mid="${mediaId}"]`);
+  const container = $$(`.folder-content[data-mid="${mediaId}"]`);
   if (!container) return;
   // 确保展开
-  const itemEl = document.querySelector(`.folder-item[data-idx="${idx}"]`);
+  const itemEl = $$(`.folder-item[data-idx="${idx}"]`);
   const contentEl = itemEl ? itemEl.parentElement.querySelector(".folder-content") : null;
   if (contentEl && !contentEl.classList.contains("expanded")) {
     contentEl.classList.add("expanded");
@@ -580,7 +593,7 @@ async function loadRemarks() {
 
 function applyRemarkDisplay(val) {
   displayRemark = val;
-  const containers = document.querySelectorAll("[data-loaded='1']");
+  const containers = $$$("[data-loaded='1']");
   containers.forEach(c => {
     const mediaId = c.dataset.mid;
     if (mediaId && folderContents[mediaId]) {
@@ -596,9 +609,9 @@ function showRemarkMenu(e, bvid, idx, mediaId) {
   menuBvid = bvid;
   menuIdx = idx;
   menuMediaId = mediaId;
-  const menu = document.getElementById("remark-menu");
+  const menu = $("remark-menu");
   const hasRemark = !!remarks[bvid];
-  document.getElementById("rm-delete").style.display = hasRemark ? "" : "none";
+  $("rm-delete").style.display = hasRemark ? "" : "none";
   menu.style.display = "block";
   // 定位在鼠标附近，防止出界
   let x = e.clientX, y = e.clientY;
@@ -611,7 +624,7 @@ function showRemarkMenu(e, bvid, idx, mediaId) {
 }
 
 function hideRemarkMenu() {
-  document.getElementById("remark-menu").style.display = "none";
+  $("remark-menu").style.display = "none";
   menuBvid = "";
   menuIdx = -1;
   menuMediaId = "";
@@ -640,13 +653,8 @@ function deleteRemarkFromMenu() {
   finishEditRemark(bvid, "");
 }
 
-// 全局点击关闭菜单
-document.addEventListener("click", (e) => {
-  if (!e.target.closest("#remark-menu")) hideRemarkMenu();
-});
-
 function startEditRemark(bvid) {
-  const titleEl = document.querySelector(`.s-title[data-remark-bvid="${bvid}"]`);
+  const titleEl = $$(`.s-title[data-remark-bvid="${bvid}"]`);
   if (!titleEl) return;
   const cur = remarks[bvid] || "";
   // 记住原始 HTML 用于还原
@@ -661,7 +669,7 @@ function startEditRemark(bvid) {
 
 // 还原单个输入框为正常显示（不刷新整个列表）
 function revertEditInput(bvid) {
-  const titleEl = document.querySelector(`.s-title[data-remark-bvid="${bvid}"]`);
+  const titleEl = $$(`.s-title[data-remark-bvid="${bvid}"]`);
   if (!titleEl || !titleEl.dataset.origHtml) return;
   titleEl.innerHTML = titleEl.dataset.origHtml;
   delete titleEl.dataset.origHtml;
@@ -685,7 +693,7 @@ function finishEditRemark(bvid, val) {
     remarks[bvid] = val;
     if (!displayRemark) {
       displayRemark = true;
-      const toggle = document.getElementById("sys-display-remark");
+      const toggle = $("sys-display-remark");
       if (toggle) toggle.checked = true;
     }
   } else {
@@ -737,7 +745,7 @@ function cancelEditRemark(bvid) {
 }
 
 function refreshAllSongs() {
-  const containers = document.querySelectorAll("[data-loaded='1']");
+  const containers = $$$("[data-loaded='1']");
   containers.forEach(c => {
     const mediaId = c.dataset.mid;
     if (mediaId && folderContents[mediaId]) {
@@ -787,7 +795,7 @@ async function loadMoreFolderContent(mediaId) {
   if (!data) return;
   const nextPage = data.page + 1;
 
-  const btn = document.querySelector(`#fc-more-btn-${mediaId}`);
+  const btn = $$(`#fc-more-btn-${mediaId}`);
   if (btn) btn.textContent = "加载中...";
 
   const resp = await fetch(`/api/folder-content?media_id=${mediaId}&page=${nextPage}`);
@@ -803,7 +811,7 @@ async function loadMoreFolderContent(mediaId) {
     updateFolderCountDisplay(mediaId, data.items.length);
   }
 
-  const container = document.querySelector(`.folder-content[data-mid="${mediaId}"]`);
+  const container = $$(`.folder-content[data-mid="${mediaId}"]`);
   if (container) renderFolderContent(mediaId, container);
 }
 
@@ -814,13 +822,13 @@ function updateFolderCountDisplay(mediaId, realCount) {
   if (!folder || folder.count === realCount) return;
   folder.count = realCount;
   // 更新 DOM 中的数字
-  const el = document.querySelector(`.folder-item[data-id="${mediaId}"] .folder-count`);
+  const el = $$(`.folder-item[data-id="${mediaId}"] .folder-count`);
   if (el) el.textContent = `${realCount}首`;
 }
 
 function toggleSearchClear() {
-  const input = document.getElementById("header-search");
-  const btn = document.getElementById("search-clear");
+  const input = $("header-search");
+  const btn = $("search-clear");
   if (input.value.trim()) {
     btn.classList.add("visible");
   } else {
@@ -828,7 +836,7 @@ function toggleSearchClear() {
   }
 }
 function clearSearch() {
-  const input = document.getElementById("header-search");
+  const input = $("header-search");
   input.value = "";
   input.focus();
   toggleSearchClear();
@@ -836,12 +844,12 @@ function clearSearch() {
 }
 
 async function filterSongs() {
-  const q = document.getElementById("header-search").value.trim().toLowerCase();
-  const expanded = document.querySelector(".folder-item.expanded");
+  const q = $("header-search").value.trim().toLowerCase();
+  const expanded = $$(".folder-item.expanded");
 
   // 没有展开的收藏夹 → 搜索不生效
   if (!expanded) {
-    document.getElementById("folder-list").classList.remove("no-results");
+    $("folder-list").classList.remove("no-results");
     return;
   }
 
@@ -850,16 +858,16 @@ async function filterSongs() {
   // 清空搜索 → 恢复当前收藏夹完整列表
   if (!q) {
     filterSongsInFolder(mediaId, "");
-    document.getElementById("folder-list").classList.remove("no-results");
+    $("folder-list").classList.remove("no-results");
     return;
   }
 
   // 在当前收藏夹内搜索
   const matchCount = filterSongsInFolder(mediaId, q);
   if (matchCount > 0) {
-    document.getElementById("folder-list").classList.remove("no-results");
+    $("folder-list").classList.remove("no-results");
   } else {
-    document.getElementById("folder-list").classList.add("no-results");
+    $("folder-list").classList.add("no-results");
   }
 }
 
@@ -867,7 +875,7 @@ function filterSongsInFolder(mediaId, q) {
   const data = folderContents[mediaId];
   if (!data) return 0;
 
-  const container = document.querySelector(`.folder-content[data-mid="${mediaId}"]`);
+  const container = $$(`.folder-content[data-mid="${mediaId}"]`);
   if (!container) return 0;
 
   const songItems = container.querySelectorAll(".fc-song-item");
@@ -911,14 +919,13 @@ function playFolderSong(idx, mediaId) {
   playbackFolder = { id: mediaId, title: data.title };
 
   // 高亮对应收藏夹
-  document.querySelectorAll(".folder-item").forEach(el => el.classList.remove("active"));
-  const folderItem = document.querySelector(`.folder-item[data-id="${mediaId}"]`);
+  $$$(".folder-item").forEach(el => el.classList.remove("active"));
+  const folderItem = $$(`.folder-item[data-id="${mediaId}"]`);
   if (folderItem) folderItem.classList.add("active");
 
   // 更新底部来源标签
-  const srcEl = document.getElementById("folder-src");
-  srcEl.textContent = "📁 " + (data.title || "收藏夹");
-  srcEl.style.display = "inline";
+  _folderSrc.textContent = "📁 " + (data.title || "收藏夹");
+  _folderSrc.style.display = "inline";
 
   // 高亮当前播放曲目
   updatePlayingHighlight(idx);
@@ -932,10 +939,10 @@ function updatePlayingHighlight(idx) {
   const mediaId = playbackFolder.id;
 
   // 清除所有播放高亮
-  document.querySelectorAll(".fc-song-item.playing").forEach(el => el.classList.remove("playing"));
+  $$$(".fc-song-item.playing").forEach(el => el.classList.remove("playing"));
 
   // 高亮当前曲目
-  const songEl = document.querySelector(`.folder-content[data-mid="${mediaId}"] .fc-song-item[data-idx="${idx}"]`);
+  const songEl = $$(`.folder-content[data-mid="${mediaId}"] .fc-song-item[data-idx="${idx}"]`);
   if (songEl) {
     songEl.classList.add("playing");
     songEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -944,17 +951,16 @@ function updatePlayingHighlight(idx) {
 
 // ---- 播放 ----
 function playBvidSong(bvid, title) {
-  document.getElementById("now-title").textContent = "⏳ " + title;
-  document.getElementById("now-title").title = title;
+  _nowTitle.textContent = "⏳ " + title;
+  _nowTitle.title = title;
   // 记录当前歌曲的来源收藏夹（此后不受悬浮影响）
   playbackFolder = currentFolder ? { id: currentFolder.id, title: currentFolder.title } : null;
   // 显示来源收藏夹
-  const srcEl = document.getElementById("folder-src");
   if (playbackFolder && playbackFolder.title) {
-    srcEl.textContent = "📁 " + playbackFolder.title;
-    srcEl.style.display = "inline";
+    _folderSrc.textContent = "📁 " + playbackFolder.title;
+    _folderSrc.style.display = "inline";
   } else {
-    srcEl.style.display = "none";
+    _folderSrc.style.display = "none";
   }
   audio.src = `/api/audio?bvid=${bvid}`;
   audio.play().then(() => {
@@ -971,7 +977,7 @@ function locateCurrentFolder() {
   const folder = playbackFolder || currentFolder;
   if (!folder || !folder.id) return;
 
-  const folderEl = document.querySelector(`.folder-item[data-id="${folder.id}"]`);
+  const folderEl = $$(`.folder-item[data-id="${folder.id}"]`);
   if (!folderEl) {
     toast("收藏夹不在当前列表中");
     return;
@@ -981,7 +987,7 @@ function locateCurrentFolder() {
   folderEl.scrollIntoView({ behavior: "smooth", block: "center" });
 
   // 高亮 + 闪烁
-  document.querySelectorAll(".folder-item").forEach(el => el.classList.remove("active"));
+  $$$(".folder-item").forEach(el => el.classList.remove("active"));
   folderEl.classList.add("active");
   folderEl.classList.add("locate-flash");
   setTimeout(() => folderEl.classList.remove("locate-flash"), 1500);
@@ -1097,7 +1103,7 @@ function seek(val) {
   if (!audio.duration) return;
   audio.currentTime = (val / 100) * audio.duration;
   const acc = themeVar('--accent'), trk = themeVar('--bg-progress-track');
-  document.getElementById("progress").style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${val}%, ${trk} ${val}%, ${trk} 100%)`;
+  _progress.style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${val}%, ${trk} ${val}%, ${trk} 100%)`;
 }
 
 function setVolume(val) {
@@ -1111,62 +1117,55 @@ function toggleMute() {
   if (audio.volume > 0) { prevVolume = audio.volume * 100; audio.volume = 0; }
   else { audio.volume = prevVolume / 100; }
   const val = audio.volume * 100;
-  document.getElementById("volume").value = val;
+  _volume.value = val;
   updateVolSlider(val);
   updateVolIcon();
 }
 
 function updateVolSlider(val) {
   const pct = val || audio.volume * 100;
-  const slider = document.getElementById("volume");
   const acc = themeVar('--accent'), trk = themeVar('--bg-progress-track');
-  slider.style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${pct}%, ${trk} ${pct}%, ${trk} 100%)`;
+  _volume.style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${pct}%, ${trk} ${pct}%, ${trk} 100%)`;
 }
 
 function showVolTip(val) {
-  const tip = document.getElementById("vol-tip");
-  tip.textContent = Math.round(val);
-  // 计算滑块小球位置：icon宽度(~24px) + gap(2px) + 滑块48px * 百分比
+  _volTip.textContent = Math.round(val);
   const iconW = 26;
   const sliderW = 48;
-  tip.style.left = (iconW + sliderW * (val / 100)) + "px";
-  tip.classList.add("show");
-  clearTimeout(tip._t);
-  tip._t = setTimeout(() => tip.classList.remove("show"), 800);
+  _volTip.style.left = (iconW + sliderW * (val / 100)) + "px";
+  _volTip.classList.add("show");
+  clearTimeout(_volTip._t);
+  _volTip._t = setTimeout(() => _volTip.classList.remove("show"), 800);
 }
 
 function hideVolTip() {
-  const tip = document.getElementById("vol-tip");
-  clearTimeout(tip._t);
-  tip.classList.remove("show");
+  clearTimeout(_volTip._t);
+  _volTip.classList.remove("show");
 }
 
 function updateVolIcon() {
-  const icon = document.getElementById("vol-icon");
-  if (audio.volume === 0) icon.textContent = "🔇";
-  else if (audio.volume < 0.5) icon.textContent = "🔉";
-  else icon.textContent = "🔊";
+  if (audio.volume === 0) _volIcon.textContent = "🔇";
+  else if (audio.volume < 0.5) _volIcon.textContent = "🔉";
+  else _volIcon.textContent = "🔊";
 }
 
 function updatePlayUI() {
-  const btn = document.getElementById("btn-play");
-  btn.textContent = isPlaying ? "⏸" : "▶";
+  _btnPlay.textContent = isPlaying ? "⏸" : "▶";
 }
 
 // ---- 音频事件 ----
 audio.addEventListener("timeupdate", () => {
   if (!audio.duration) return;
   const pct = (audio.currentTime / audio.duration) * 100;
-  const progress = document.getElementById("progress");
-  progress.value = pct;
+  _progress.value = pct;
   const acc = themeVar('--accent'), trk = themeVar('--bg-progress-track');
-  progress.style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${pct}%, ${trk} ${pct}%, ${trk} 100%)`;
-  document.getElementById("cur-time").textContent = formatTime(audio.currentTime);
+  _progress.style.background = `linear-gradient(to right, ${acc} 0%, ${acc} ${pct}%, ${trk} ${pct}%, ${trk} 100%)`;
+  _curTime.textContent = formatTime(audio.currentTime);
 });
 
 audio.addEventListener("loadedmetadata", () => {
-  document.getElementById("dur-time").textContent = formatTime(audio.duration);
-  document.getElementById("progress").style.background = themeVar('--bg-progress-track');
+  _durTime.textContent = formatTime(audio.duration);
+  _progress.style.background = themeVar('--bg-progress-track');
 });
 
 audio.addEventListener("play", () => { isPlaying = true; consecutiveErrors = 0; updatePlayUI(); });
@@ -1188,8 +1187,7 @@ audio.addEventListener("error", () => {
 
 // ---- 托盘状态查询（供 Python 端 evaluate_js 调用）----
 function getPlaybackState() {
-  const titleEl = document.getElementById("now-title");
-  let title = titleEl ? titleEl.textContent : "未在播放";
+  let title = _nowTitle ? _nowTitle.textContent : "未在播放";
   title = title.replace("♫ ", "").replace("⏳ ", "").trim() || "未在播放";
   // 去掉常见的 B 站标题修饰前缀，如 【4K】、【MV】
   title = title.replace(/【[^】]*】/g, "").replace(/\s+/g, " ").trim() || "未在播放";
@@ -1210,6 +1208,21 @@ function esc(str) {
   if (!str) return "";
   return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+
+// ---- 全局点击关闭（统一处理下拉菜单、右键菜单、字体选择器）----
+document.addEventListener("click", (e) => {
+  const target = e.target;
+  // 关闭头像下拉
+  const dd = $("avatar-dropdown");
+  if (dd && !target.closest("#avatar-dropdown") && !target.closest("#user-avatar")) {
+    dd.classList.remove("show");
+  }
+  // 关闭右键菜单
+  if (!target.closest("#remark-menu")) hideRemarkMenu();
+  // 关闭字体选择器
+  const fs = $("sys-font-family");
+  if (fs && !target.closest("#sys-font-family")) fs.classList.remove("open");
+});
 
 // ---- 键盘快捷键 ----
 document.addEventListener("keydown", e => {
@@ -1232,7 +1245,7 @@ document.addEventListener("keydown", e => {
     await loadHiddenFolders();
     await loadFolders();
   } else {
-    document.getElementById("folder-list").innerHTML = `
+    $("folder-list").innerHTML = `
       <div class="welcome">
         <div class="welcome-icon">🎵</div>
         <div class="welcome-title">BIU</div>
@@ -1245,6 +1258,6 @@ document.addEventListener("keydown", e => {
         <button class="welcome-btn" onclick="showCookieDialog()">登录 Bilibili</button>
         <div class="welcome-footer">登录后即可同步你的收藏夹歌单</div>
       </div>`;
-    document.querySelector(".player").style.display = "none";
+    _playerEl.style.display = "none";
   }
 })();
