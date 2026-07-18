@@ -361,6 +361,26 @@ def register_routes(app, client, load_config, save_config, window_api=None):
         result = lyrics_engine.fetch_lyrics_by_source(source, song_id)
         return jsonify(result)
 
+    @app.route("/api/lyrics/save", methods=["POST"])
+    def api_lyrics_save():
+        """手动选择歌词后回写缓存，下次同一首歌直接用这条"""
+        data = request.get_json(silent=True) or {}
+        bvid = (data.get("bvid") or "").strip()
+        title = (data.get("title") or "").strip()
+        lrc = (data.get("lrc") or "").strip()
+        tlyric = (data.get("tlyric") or "").strip()
+        romalrc = (data.get("romalrc") or "").strip()
+
+        cache_key = bvid or title
+        if not cache_key or not lrc:
+            return jsonify({"ok": False, "error": "missing cache_key or lrc"})
+
+        lyrics_engine.write_lyrics_cache(cache_key, {
+            "lrc": lrc, "tlyric": tlyric, "romalrc": romalrc,
+        })
+        logger.info("lyrics: saved user preference for cache_key=%s", cache_key)
+        return jsonify({"ok": True})
+
     # ---- 音频代理 ----
     @app.route("/api/audio")
     def api_audio():

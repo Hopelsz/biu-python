@@ -586,9 +586,31 @@ async function pickLyricsResult(source, id) {
     if (_lyricsSearchPanel) _lyricsSearchPanel.style.display = "none";
     if (_lyricsSearchInput) _lyricsSearchInput.value = "";
     toast("歌词已切换");
+
+    // 回写缓存：下次播放同一首歌直接使用手动选择的歌词
+    _saveLyricsPreference(data);
   } catch (e) {
     toast("请求失败");
   }
+}
+
+function _saveLyricsPreference(fetchedData) {
+  // 将用户手动选择的歌词持久化到缓存
+  const bvid = currentBvid || "";
+  const title = (_lyricsSongTitle.textContent || "").trim();
+  if (!bvid && !title) return;
+  const cacheKey = bvid || title;
+  fetch("/api/lyrics/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bvid: bvid,
+      title: title,
+      lrc: fetchedData.lrc || "",
+      tlyric: fetchedData.tlyric || "",
+      romalrc: fetchedData.romalrc || "",
+    })
+  }).catch(() => {}); // 静默失败，不影响主流程
 }
 
 // 歌词页事件绑定（在 overlay 显示后绑定）
