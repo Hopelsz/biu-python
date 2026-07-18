@@ -631,6 +631,10 @@ _lyricsOverlay?.addEventListener("click", (e) => {
   if (_lyricsMoreMenu && _lyricsMoreMenu.style.display === "flex" && !e.target.closest("#lyrics-more-menu") && !e.target.closest("#lyrics-more-btn")) {
     _lyricsMoreMenu.style.display = "none";
   }
+  // 点击偏移面板外部关闭
+  if (_lyricsOffsetPanel && _lyricsOffsetPanel.style.display === "flex" && !e.target.closest("#lyrics-offset-panel") && !e.target.closest("#lyrics-offset-btn") && !e.target.closest("#lyrics-more-btn")) {
+    _lyricsOffsetPanel.style.display = "none";
+  }
 });
 
 // 歌词页鼠标移动 → 显示控制栏，3秒不动自动隐藏

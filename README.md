@@ -4,10 +4,15 @@
 
 ## 📸 预览
 
-| | | | | |
-|:---:|:---:|:---:|:---:|:---:|
-| ![](screenshots/BIU-White.png) | ![](screenshots/BIU-Login.png) | ![](screenshots/BIU-Favorite.png) | ![](screenshots/BIU-Lyric.png) | ![](screenshots/BIU-Setting.png) |
-| 浅色主题 | 欢迎页 | 收藏夹播放 | 歌词显示 | 收藏夹设置 |
+| | | | |
+|:---:|:---:|:---:|:---:|
+| ![](screenshots/BIU-White.png) | ![](screenshots/BIU-Qrcode.png) | ![](screenshots/BIU-Cookie.png) | ![](screenshots/BIU-Favorite.png) |
+| 浅色主题 | 扫码登录 | Cookie 登录 | 收藏夹播放 |
+
+| | | | |
+|:---:|:---:|:---:|:---:|
+| ![](screenshots/BIU-Lyric.png) | ![](screenshots/BIU-Setting.png) | ![](screenshots/BIU-Login.png) | |
+| 歌词显示 | 收藏夹设置 | 欢迎页 | |
 
 ## ✨ 特性
 
@@ -79,7 +84,7 @@ biu-python/
 
 ## 🎮 使用说明
 
-1. **登录** — 从 B站网页获取 Cookie，粘贴 SESSDATA 到登录框
+1. **登录** — 支持扫码登录（推荐）或粘贴 SESSDATA Cookie 登录
 2. **浏览收藏夹** — 登录后可查看所有收藏夹及内容
 3. **播放** — 点击歌曲开始播放，支持上一首/下一首、列表循环/单曲循环
 4. **搜索** — 在搜索框输入关键词，实时过滤收藏夹内的歌曲

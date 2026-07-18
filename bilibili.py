@@ -3,8 +3,10 @@ Bilibili API 客户端
 - WBI 签名
 - 收藏夹
 - 播放地址获取
+- 扫码登录
 """
 import hashlib
+import io
 import logging
 import time
 import uuid
@@ -446,5 +448,152 @@ class BiliClient:
             return None
         logger.debug("get_play_info success: bvid=%s, %s url(s)", bvid, len(audio_urls))
         return {"bvid": bvid, "cid": cid, "audio_urls": audio_urls}
+
+    # ---- 扫码登录 ----
+
+    def get_qrcode(self) -> dict | None:
+        """获取登录二维码 URL 和 qrcode_key"""
+        try:
+            resp = self.session.get(
+                "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
+                timeout=10,
+            )
+            data = resp.json()
+            logger.info("qrcode generate: code=%s", data.get("code"))
+            if data.get("code") == 0:
+                qr_data = data["data"]
+                return {
+                    "url": qr_data["url"],
+                    "qrcode_key": qr_data["qrcode_key"],
+                }
+            else:
+                logger.warning("qrcode generate failed: %s", data.get("message"))
+                return None
+        except Exception as e:
+            logger.error("qrcode generate error: %s", e)
+            return None
+
+    def poll_qrcode(self, qrcode_key: str) -> dict:
+        """轮询扫码状态，返回 {status, cookie_data?, message?}
+        status: "pending" | "scanned" | "expired" | "success" | "error"
+
+        B站 poll 接口返回格式：
+          {"code": 0, "message": "0", "data": {"code": 86101/86090/86038/0, ...}}
+        真正的扫码状态码在 data.code 里，顶层 code 始终为 0（表示 HTTP API 成功）。
+        """
+        try:
+            resp = self.session.get(
+                "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
+                params={"qrcode_key": qrcode_key},
+                timeout=10,
+            )
+            data = resp.json()
+            inner = data.get("data", {})
+            # 真正的扫码状态码在 data.code 里
+            inner_code = inner.get("code")
+            logger.debug("qrcode poll: top_code=%s inner_code=%s message=%s",
+                        data.get("code"), inner_code, inner.get("message", data.get("message")))
+
+            if data.get("code") != 0:
+                # 顶层 API 调用失败
+                return {"status": "error", "message": data.get("message", "接口调用失败")}
+
+            if inner_code == 0:
+                # 扫码成功（data.code == 0）
+                return {
+                    "status": "success",
+                    "cookie_data": inner,
+                }
+            elif inner_code == 86038:
+                # 二维码已过期
+                return {"status": "expired", "message": "二维码已过期，请刷新重试"}
+            elif inner_code == 86090:
+                # 已扫码但未确认
+                return {"status": "scanned", "message": "已扫码，请在手机上确认"}
+            elif inner_code == 86101:
+                # 未扫码
+                return {"status": "pending", "message": "等待扫码"}
+            else:
+                return {"status": "error", "message": inner.get("message", data.get("message", f"未知错误 code={inner_code}"))}
+        except Exception as e:
+            logger.error("qrcode poll error: %s", e)
+            return {"status": "error", "message": str(e)}
+
+    def apply_qrcode_cookie(self, cookie_data: dict) -> bool:
+        """扫码成功后，将返回的 cookie 信息设置到 session 中，并返回是否登录成功"""
+        # B站扫码登录返回的 cookie 信息包含 token 等
+        # 直接通过 /x/passport-login/web/qrcode/poll 接口的 Set-Cookie 已经自动写入了
+        # 但有时需要手动设置
+        refresh_token = cookie_data.get("refresh_token", "")
+        if refresh_token:
+            self.session.cookies.set("refresh_token", refresh_token, domain=".bilibili.com")
+
+        # 重新验证登录状态
+        self._mid = None
+        self._wbi_img_key = ""
+        self._wbi_sub_key = ""
+        mid = self.get_self_mid()
+        return mid is not None
+
+    def get_qrcode_image(self, url: str) -> bytes | None:
+        """根据二维码 URL 获取二维码图片的 PNG 二进制数据"""
+        try:
+            # 使用独立 session，不携带现有 cookie（避免干扰）
+            img_session = requests.Session()
+            img_session.headers.update({
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.bilibili.com/",
+                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            })
+            resp = img_session.get(url, timeout=10)
+            logger.info("qrcode image download: status=%s content-length=%s content-type=%s",
+                        resp.status_code,
+                        resp.headers.get("Content-Length", "?"),
+                        resp.headers.get("Content-Type", "?"))
+            if resp.status_code == 200 and resp.content:
+                # 检查是否为图片
+                if resp.content[:4] == b'\x89PNG' or resp.content[:2] == b'\xff\xd8':
+                    return resp.content
+                # 如果不是图片，可能是重定向页面，尝试用 qrcode 库生成
+                logger.warning("qrcode url returned non-image content, will generate locally")
+            return None
+        except Exception as e:
+            logger.error("get_qrcode_image error: %s", e)
+            return None
+
+    def generate_qrcode_locally(self, qrcode_key: str) -> bytes | None:
+        """使用 qrcode_key 在本地生成二维码图片"""
+        try:
+            import qrcode as _qrcode
+            from qrcode.image.pil import PilImage
+        except ImportError:
+            logger.error("qrcode library not installed, please run: pip install qrcode[pil]")
+            return None
+
+        try:
+            # 构造 B站扫码登录 URL
+            login_url = f"https://account.bilibili.com/h5/account-h5/auth/scan-web?navhide=1&callback=close&qrcode_key={qrcode_key}"
+            qr = _qrcode.QRCode(
+                version=1,
+                error_correction=_qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=2,
+            )
+            qr.add_data(login_url)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception as e:
+            logger.error("generate_qrcode_locally error: %s", e)
+            return None
+
+
+
 
 

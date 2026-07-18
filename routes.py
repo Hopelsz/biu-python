@@ -141,6 +141,81 @@ def register_routes(app, client, load_config, save_config, window_api=None):
         save_config(cfg)
         return jsonify({"ok": True, "mid": mid})
 
+    # ---- 扫码登录 ----
+    @app.route("/api/qrcode/generate", methods=["POST"])
+    def api_qrcode_generate():
+        """生成登录二维码"""
+        result = client.get_qrcode()
+        if not result:
+            return jsonify({"ok": False, "error": "获取二维码失败，请检查网络"})
+
+        # 获取二维码图片
+        qr_url = result["url"]
+        qr_key = result["qrcode_key"]
+        logger.info("qrcode url: %s", qr_url[:80])
+        logger.info("qrcode key: %s", qr_key[:40])
+
+        # 先尝试从 B站 URL 下载图片
+        qr_image = client.get_qrcode_image(qr_url)
+
+        # 如果下载的不是图片，则本地生成
+        if not qr_image:
+            logger.info("fallback to local qrcode generation")
+            qr_image = client.generate_qrcode_locally(qr_key)
+
+        if not qr_image:
+            logger.error("failed to get qrcode image")
+            return jsonify({"ok": False, "error": "获取二维码图片失败"})
+
+        logger.info("qrcode image size: %d bytes", len(qr_image))
+
+        import base64
+        qr_base64 = base64.b64encode(qr_image).decode("utf-8")
+
+        return jsonify({
+            "ok": True,
+            "qrcode_key": qr_key,
+            "qrcode_image": f"data:image/png;base64,{qr_base64}",
+        })
+
+    @app.route("/api/qrcode/poll", methods=["POST"])
+    def api_qrcode_poll():
+        """轮询扫码状态"""
+        data = request.get_json()
+        qrcode_key = data.get("qrcode_key", "").strip()
+        if not qrcode_key:
+            return jsonify({"ok": False, "error": "缺少 qrcode_key"})
+
+        result = client.poll_qrcode(qrcode_key)
+
+        if result["status"] == "success":
+            # 扫码成功，应用 cookie 并保存
+            cookie_data = result.get("cookie_data", {})
+            if client.apply_qrcode_cookie(cookie_data):
+                cfg = load_config()
+                # 从 session cookies 中获取 SESSDATA
+                sessdata = client.session.cookies.get("SESSDATA", domain=".bilibili.com") or \
+                           client.session.cookies.get("SESSDATA")
+                if sessdata:
+                    cfg["sessdata"] = sessdata
+                cfg["buvid"] = client._buvid
+                save_config(cfg)
+                return jsonify({
+                    "ok": True,
+                    "status": "success",
+                    "mid": client._mid,
+                    "uname": client._uname,
+                })
+            else:
+                return jsonify({"ok": False, "status": "error", "message": "登录验证失败，请重试"})
+
+        return jsonify({
+            "ok": True,
+            "status": result["status"],
+            "message": result.get("message", ""),
+        })
+
+    # ---- 登出 ----
     @app.route("/api/logout", methods=["POST"])
     def api_logout():
         cfg = load_config()

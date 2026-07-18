@@ -337,7 +337,7 @@ body {
   box-shadow: var(--shadow-md);
 }
 .dialog h2 { font-size: 16px; margin-bottom: 12px; }
-.dialog p { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.6; }
+.dialog p { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .dialog input {
   width: 100%; padding: 10px;
   border: none;
@@ -345,10 +345,169 @@ body {
   background: var(--bg-surface);
   color: var(--text-bright);
   font-size: 13px;
-  margin-bottom: 12px;
   outline: none;
 }
-.dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog .actions { display: flex; gap: 8px; justify-content: center; }
+
+/* Cookie 登录面板：加大间距填充高度，按钮更突出 */
+#login-cookie-panel { gap: 18px; }
+#login-cookie-panel .actions .btn {
+  padding: 8px 22px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+/* 浅色主题 - 扫码面板按钮加深颜色 */
+[data-theme="light"] #login-qrcode-panel .btn-text-muted {
+  color: #5c6677;
+}
+[data-theme="light"] #login-qrcode-panel .btn-text-muted:hover {
+  color: #3a4455;
+  background: var(--bg-hover-2);
+}
+[data-theme="light"] #login-qrcode-panel .btn-text-primary {
+  color: #2065b0;
+}
+[data-theme="light"] #login-qrcode-panel .btn-text-primary:hover {
+  color: #144a85;
+  background: var(--bg-hover-2);
+  opacity: 1;
+}
+
+/* 浅色主题 - 弹窗整体加深，拉开内部元素层次 */
+[data-theme="light"] .dialog {
+  background: #d6dfeb;
+}
+
+/* 浅色主题 - tab栏进一步加深 */
+[data-theme="light"] .login-tabs {
+  background: #c3cddc;
+}
+
+/* 浅色主题 - 输入框纯白突出 */
+[data-theme="light"] .dialog input {
+  background: #fff;
+}
+
+/* 浅色主题 - 未登录底部提示加深 */
+[data-theme="light"] .welcome-footer {
+  color: #b4c2d2;
+}
+
+/* 登录选项卡 */
+.login-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+.login-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.login-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+.login-panel {
+  height: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 12px;
+}
+.qrcode-container {
+  width: 180px;
+  height: 180px;
+  margin: 0 auto;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--border-color);
+}
+.qrcode-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.qrcode-img[src=""] { display: none; }
+.qrcode-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qrcode-mask-text {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 二维码加载骨架屏 */
+.qrcode-skeleton {
+  position: absolute;
+  inset: 0;
+  background: #e8ecf1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.qrcode-skeleton::after {
+  content: "";
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2.5px solid #e0e5ed;
+  border-top-color: #4a6fa5;
+  animation: sk-spin .75s linear infinite;
+}
+@keyframes sk-spin {
+  to { transform: rotate(360deg); }
+}
+.qrcode-tip {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  align-self: center;
+}
+.qrcode-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  align-self: center;
+}
+.btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.btn-text:hover { color: var(--accent); background: var(--bg-element); }
+.btn-text.btn-text-primary { color: var(--accent); }
+.btn-text.btn-text-primary:hover { opacity: .8; background: var(--bg-element); }
+.btn-text.btn-text-muted { color: var(--text-muted); }
+.btn-text.btn-text-muted:hover { color: var(--text-secondary); background: var(--bg-element); }
+.qrcode-actions .qa-icon { width: 13px; height: 13px; }
 
 /* 设置页面 */
 .settings-page {

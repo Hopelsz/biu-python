@@ -112,9 +112,14 @@ updateVolSlider(5);
 // ---- Cookie ----
 function showCookieDialog() {
   $("cookie-dialog").style.display = "flex";
+  // 默认显示扫码登录
+  switchLoginTab("qrcode");
+  // 自动开始获取二维码
+  startQrcodeLogin();
 }
 function hideCookieDialog() {
   $("cookie-dialog").style.display = "none";
+  stopQrcodePolling();
 }
 async function saveCookie() {
   const val = $("sessdata-input").value.trim();
@@ -141,6 +146,107 @@ async function saveCookie() {
   } catch (e) {
     toast("请求失败：" + e.message);
   }
+}
+
+// ---- 扫码登录 ----
+let qrcodeKey = "";
+let qrcodePollTimer = null;
+
+function switchLoginTab(tab) {
+  $$(".login-tab.active").classList.remove("active");
+  $$(`.login-tab[data-tab="${tab}"]`).classList.add("active");
+
+  if (tab === "qrcode") {
+    $("login-qrcode-panel").style.display = "";
+    $("login-cookie-panel").style.display = "none";
+    if (!qrcodeKey) startQrcodeLogin();
+  } else {
+    $("login-qrcode-panel").style.display = "none";
+    $("login-cookie-panel").style.display = "";
+    stopQrcodePolling();
+  }
+}
+
+async function startQrcodeLogin() {
+  stopQrcodePolling();
+  $("qrcode-tip").textContent = "正在生成二维码...";
+  $("qrcode-refresh-btn").style.display = "none";
+  // 显示骨架加载动画
+  $("qrcode-skeleton").style.display = "flex";
+  $("qrcode-img").style.display = "none";
+
+  try {
+    const resp = await fetch("/api/qrcode/generate", { method: "POST" });
+    const data = await resp.json();
+    if (data.ok) {
+      qrcodeKey = data.qrcode_key;
+      $("qrcode-img").onload = function() {
+        $("qrcode-skeleton").style.display = "none";
+        $("qrcode-img").style.display = "";
+      };
+      $("qrcode-img").src = data.qrcode_image;
+      $("qrcode-tip").textContent = "请使用 Bilibili 客户端扫描二维码";
+      $("qrcode-refresh-btn").style.display = "";
+      // 开始轮询
+      startQrcodePolling();
+    } else {
+      $("qrcode-skeleton").style.display = "none";
+      $("qrcode-img").style.display = "";
+      $("qrcode-tip").textContent = data.error || "获取二维码失败";
+    }
+  } catch (e) {
+    $("qrcode-skeleton").style.display = "none";
+    $("qrcode-img").style.display = "";
+    $("qrcode-tip").textContent = "网络错误，请重试";
+  }
+}
+
+function startQrcodePolling() {
+  stopQrcodePolling();
+  qrcodePollTimer = setInterval(async () => {
+    if (!qrcodeKey) return;
+    try {
+      const resp = await fetch("/api/qrcode/poll", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ qrcode_key: qrcodeKey })
+      });
+      const data = await resp.json();
+
+      if (data.status === "success") {
+        // 登录成功
+        stopQrcodePolling();
+        hideCookieDialog();
+        toast("扫码登录成功");
+        _playerEl.style.display = "";
+        await loadUser();
+        await loadFolders();
+      } else if (data.status === "scanned") {
+        $("qrcode-tip").textContent = "已扫码，请在手机上确认登录";
+      } else if (data.status === "expired") {
+        stopQrcodePolling();
+        qrcodeKey = "";
+        $("qrcode-mask").style.display = "flex";
+        $("qrcode-mask-text").textContent = "二维码已过期";
+        $("qrcode-tip").textContent = "二维码已过期，请刷新";
+      } else if (data.status === "error") {
+        $("qrcode-tip").textContent = data.message || "出错了，请重试";
+      }
+    } catch (e) {
+      // 忽略网络错误，继续轮询
+    }
+  }, 2000);
+}
+
+function stopQrcodePolling() {
+  if (qrcodePollTimer) {
+    clearInterval(qrcodePollTimer);
+    qrcodePollTimer = null;
+  }
+}
+
+async function refreshQrcode() {
+  await startQrcodeLogin();
 }
 
 // ---- Toast ----
