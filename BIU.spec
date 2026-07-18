@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('bilibili.py', '.'), ('routes.py', '.'), ('BIU.ico', '.'),
+datas = [('bilibili.py', '.'), ('routes.py', '.'), ('lyrics_engine.py', '.'), ('BIU.ico', '.'),
          ('templates', 'templates'), ('static', 'static')]
 binaries = []
 hiddenimports = []
