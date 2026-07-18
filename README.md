@@ -6,13 +6,13 @@
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| ![](screenshots/BIU-White.png) | ![](screenshots/BIU-Qrcode.png) | ![](screenshots/BIU-Cookie.png) | ![](screenshots/BIU-Favorite.png) |
-| 浅色主题 | 扫码登录 | Cookie 登录 | 收藏夹播放 |
+| ![](screenshots/BIU-White.png) | ![](screenshots/BIU-Login.png) | ![](screenshots/BIU-Cookie.png) | ![](screenshots/BIU-Favorite.png) |
+| 浅色主题 | 欢迎页 | Cookie 登录 | 收藏夹播放 |
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| ![](screenshots/BIU-Lyric.png) | ![](screenshots/BIU-Setting.png) | ![](screenshots/BIU-Login.png) | |
-| 歌词显示 | 收藏夹设置 | 欢迎页 | |
+| ![](screenshots/BIU-Lyric.png) | ![](screenshots/BIU-Setting.png) | | |
+| 歌词显示 | 收藏夹设置 | | |
 
 ## ✨ 特性
 
