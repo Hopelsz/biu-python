@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import urllib.parse
 
@@ -16,10 +17,19 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# 歌词缓存目录
-_lyrics_cache_dir = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".lyrics_cache"
-)
+
+# 歌词缓存目录：开发和打包模式统一放在可执行文件/脚本同级
+def _get_lyrics_cache_dir() -> str:
+    if getattr(sys, "frozen", False):
+        # PyInstaller 打包：EXE 所在目录
+        base = os.path.dirname(sys.executable)
+    else:
+        # 开发模式：当前脚本目录
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, ".lyrics_cache")
+
+
+_lyrics_cache_dir = _get_lyrics_cache_dir()
 os.makedirs(_lyrics_cache_dir, exist_ok=True)
 
 
