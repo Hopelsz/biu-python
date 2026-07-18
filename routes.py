@@ -8,10 +8,23 @@ import time
 import requests
 from flask import Response, jsonify, request
 
+import lyrics_engine
+
 logger = logging.getLogger(__name__)
 
 # 记录曾经成功响应的 CDN 主机，下次优先使用
 _GOOD_CDN_HOSTS: set[str] = set()
+
+# ---- API 频率限制 ----
+_LAST_CALL: dict[str, float] = {}
+
+def _rate_limit(key: str, min_interval: float = 0.3) -> bool:
+    """简单的 API 频率限制，返回 True 表示允许调用"""
+    now = time.time()
+    if key in _LAST_CALL and now - _LAST_CALL[key] < min_interval:
+        return False
+    _LAST_CALL[key] = now
+    return True
 
 
 def _extract_host(url: str) -> str:
@@ -260,6 +273,93 @@ def register_routes(app, client, load_config, save_config, window_api=None):
         except Exception as e:
             logger.error("API /api/search error: %s", e)
             return jsonify({"items": [], "has_more": False, "total": 0, "page": page})
+
+    # ---- 歌词 (调用 lyrics_engine) ----
+    @app.route("/api/lyrics")
+    def api_lyrics():
+        if not _rate_limit("lyrics", 0.5):
+            return jsonify({"ok": False, "error": "too many requests"}), 429
+
+        title = request.args.get("title", "").strip()
+        artist = request.args.get("artist", "").strip()
+        bvid = request.args.get("bvid", "").strip()
+        cid = request.args.get("cid", "").strip()
+        dur_str = request.args.get("duration", "0")
+        duration_sec = float(dur_str) if dur_str else 0
+
+        if not title:
+            return jsonify({"ok": False, "error": "missing title"})
+
+        # 1. 本地缓存
+        cache_key = bvid or title
+        if bvid and cid:
+            cache_key = f"{bvid}:{cid}"
+        cached = lyrics_engine.read_lyrics_cache(cache_key)
+        if cached:
+            resp = {"ok": True, "lrc": cached["lrc"]}
+            if cached.get("tlyric"):
+                resp["tlyric"] = cached["tlyric"]
+            if cached.get("romalrc"):
+                resp["romalrc"] = cached["romalrc"]
+            return jsonify(resp)
+
+        # 2. B站字幕（兜底）
+        if bvid:
+            lrc_text = lyrics_engine.try_bilibili_subtitle(bvid, client.session)
+            if lrc_text:
+                data = {"lrc": lrc_text, "tlyric": "", "romalrc": ""}
+                lyrics_engine.write_lyrics_cache(cache_key, data)
+                return jsonify({"ok": True, "lrc": lrc_text})
+
+        # 3. 提取关键词
+        keyword = None
+        if bvid:
+            bgm_name = lyrics_engine.get_bilibili_bgm_name(bvid, client.session, cid)
+            if bgm_name:
+                keyword = bgm_name
+                logger.info("lyrics: using bilibili bgm_name='%s'", keyword)
+        if not keyword:
+            keyword = lyrics_engine.clean_keyword(title)
+        logger.info("lyrics: final keyword='%s' duration=%ss", keyword, duration_sec)
+
+        # 4. 多源并行搜索
+        lrc_result = lyrics_engine.search_lyrics_multisource(keyword, duration_sec)
+        if lrc_result and isinstance(lrc_result, dict) and lrc_result.get("lrc"):
+            lyrics_engine.write_lyrics_cache(cache_key, lrc_result)
+            resp = {"ok": True, "lrc": lrc_result["lrc"]}
+            if lrc_result.get("tlyric"):
+                resp["tlyric"] = lrc_result["tlyric"]
+            if lrc_result.get("romalrc"):
+                resp["romalrc"] = lrc_result["romalrc"]
+            return jsonify(resp)
+
+        return jsonify({"ok": False})
+
+    @app.route("/api/lyrics/search")
+    def api_lyrics_search():
+        if not _rate_limit("lyrics_search", 0.5):
+            return jsonify({"ok": False, "error": "too many requests"}), 429
+
+        keyword = request.args.get("keyword", "").strip()
+        dur_str = request.args.get("duration", "0")
+        duration_sec = float(dur_str) if dur_str else 0
+
+        if not keyword:
+            return jsonify({"ok": False, "error": "missing keyword"})
+
+        results = lyrics_engine.search_lyrics_candidates(keyword, duration_sec)
+        return jsonify({"ok": True, "keyword": keyword, "results": results})
+
+    @app.route("/api/lyrics/fetch")
+    def api_lyrics_fetch():
+        source = request.args.get("source", "").strip()
+        song_id = request.args.get("id", "").strip()
+
+        if not source or not song_id:
+            return jsonify({"ok": False, "error": "missing source or id"})
+
+        result = lyrics_engine.fetch_lyrics_by_source(source, song_id)
+        return jsonify(result)
 
     # ---- 音频代理 ----
     @app.route("/api/audio")

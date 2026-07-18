@@ -229,10 +229,28 @@ class TrayManager:
         threading.Thread(target=self._do_exit, daemon=True).start()
 
     def _do_exit(self):
+        """优雅退出：先通知 webview 关闭，等待 WebView2 清理窗口类，再退出"""
+        import sys as _sys
+
+        # 暂时重定向 stderr，吞掉 WebView2 退出时的 Chrome_WidgetWin_0 错误
+        _old_stderr = _sys.stderr
         try:
-            self._window.destroy()
+            _sys.stderr = open(os.devnull, "w")
         except Exception:
             pass
+
+        try:
+            self._window.destroy()
+            # 给 WebView2 一点时间注销窗口类
+            time.sleep(0.3)
+        except Exception:
+            pass
+        finally:
+            try:
+                _sys.stderr = _old_stderr
+            except Exception:
+                pass
+
         os._exit(0)
 
 

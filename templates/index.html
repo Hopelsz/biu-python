@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
 <title>BIU Music</title>
+<link rel="stylesheet" href="/static/css/_theme.css">
+<link rel="stylesheet" href="/static/css/_lyrics.css">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body data-theme="dark">
@@ -184,7 +186,7 @@
 <!-- 底部播放器 -->
 <div class="player">
   <div class="player-info">
-    <span class="title" id="now-title">♫ 未在播放</span>
+    <span class="title" id="now-title" onclick="openLyrics()" title="点击查看歌词">♫ 未在播放</span>
     <span class="folder-src" id="folder-src" style="display:none" onclick="locateCurrentFolder()" title="点击定位收藏夹"></span>
   </div>
   <div class="progress-wrap">
@@ -208,6 +210,118 @@
 
 <audio id="audio" preload="auto" style="display:none"></audio>
 
+<!-- 全屏歌词详情页 -->
+<div class="lyrics-overlay" id="lyrics-overlay">
+  <div class="lyrics-bg" id="lyrics-bg"></div>
+  <div class="lyrics-ambient"></div>
+  <div class="lyrics-overlay-mask"></div>
+  <div class="lyrics-overlay-content">
+    <div class="lyrics-drag-bar" id="lyrics-drag-bar"></div>
+    <button class="lyrics-close" onclick="closeLyrics()" title="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <!-- 歌词控制按钮组 -->
+    <div class="lyrics-ctrls">
+      <button class="lyrics-ctrl-btn" id="lyrics-search-btn" onclick="toggleLyricsSearchPanel()" title="搜索歌词">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <button class="lyrics-ctrl-btn" id="lyrics-more-btn" onclick="toggleLyricsMoreMenu()" title="更多">
+        <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+      </button>
+    </div>
+    <!-- 更多菜单 -->
+    <div class="lyrics-more-menu" id="lyrics-more-menu" style="display:none">
+      <button class="lyrics-more-item" id="lyrics-offset-btn" onclick="toggleLyricsOffsetPanel()">⇄ 调整偏移</button>
+      <button class="lyrics-more-item" id="lyrics-cover-toggle-btn" onclick="toggleLyricsCover();toggleLyricsMoreMenu()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:4px"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>隐藏封面
+      </button>
+    </div>
+    <!-- 时间偏移面板 -->
+    <div class="lyrics-offset-panel" id="lyrics-offset-panel" style="display:none">
+      <button class="offset-adj-btn" onclick="adjustLyricsOffset(-0.5)" title="歌词提前0.5秒">−0.5</button>
+      <span class="offset-val" id="lyrics-offset-val">+0.0s</span>
+      <button class="offset-adj-btn" onclick="adjustLyricsOffset(+0.5)" title="歌词延后0.5秒">+0.5</button>
+    </div>
+    <!-- 歌词搜索面板 -->
+    <div class="lyrics-search-panel" id="lyrics-search-panel" style="display:none">
+      <div class="lyrics-search-input-wrap">
+        <input class="lyrics-search-input" id="lyrics-search-input" type="text" placeholder="输入关键词搜索歌词..." onkeydown="if(event.key==='Enter')searchLyrics()">
+        <button class="lyrics-search-go" onclick="searchLyrics()" title="搜索">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+      </div>
+      <div class="lyrics-search-results" id="lyrics-search-results"></div>
+    </div>
+    <div class="lyrics-cover-wrap" id="lyrics-cover-wrap">
+      <img class="lyrics-cover" id="lyrics-cover" src="" alt="" />
+      <div class="lyrics-cover-placeholder" id="lyrics-cover-placeholder">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+      </div>
+    </div>
+    <div class="lyrics-header">
+      <div class="lyrics-song-title" id="lyrics-song-title">歌曲名</div>
+      <div class="lyrics-song-artist" id="lyrics-song-artist">歌手</div>
+    </div>
+    <div class="lyrics-scroll" id="lyrics-scroll">
+      <div class="lyrics-scroll-inner" id="lyrics-scroll-inner">
+        <div class="lyric-page-line lyric-page-empty">歌词加载中...</div>
+      </div>
+    </div>
+    <!-- 底部控制栏 -->
+    <div class="lyrics-control-bar" id="lyrics-control-bar">
+      <div class="lyrics-cb-progress-wrap">
+        <span class="lyrics-cb-time lyrics-cb-time-left" id="lyrics-cb-cur">0:00</span>
+        <input type="range" class="lyrics-cb-progress" id="lyrics-cb-progress" min="0" max="100" value="0" oninput="seekLyricsProgress(this.value)">
+        <span class="lyrics-cb-time lyrics-cb-time-right" id="lyrics-cb-dur">0:00</span>
+      </div>
+      <div class="lyrics-cb-row">
+        <button class="lyrics-cb-btn" onclick="prevSong()" title="上一首">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="lyrics-cb-btn lyrics-cb-play" id="lyrics-cb-play" onclick="togglePlay()" title="播放/暂停">
+          <svg class="lyrics-cb-icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="lyrics-cb-icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <button class="lyrics-cb-btn" onclick="nextSong()" title="下一首">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <button class="lyrics-cb-btn" id="lyrics-cb-translate" onclick="toggleLyricsTranslate()" title="切换翻译" style="display:none">译</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/app.js"></script>
+<script src="/static/js/playlist.js"></script>
+<script src="/static/js/settings.js"></script>
+<script src="/static/js/search.js"></script>
+<script src="/static/js/lyrics.js"></script>
+<script>
+(async function init() {
+  await loadSystemSettings();
+  await loadRemarks();
+  const data = await loadUser();
+  if (data.logged_in) {
+    await loadHiddenFolders();
+    await loadFolders();
+  } else {
+    $("folder-list").innerHTML = [
+      '<div class="welcome">',
+      '<div class="welcome-icon">🎵</div>',
+      '<div class="welcome-title">BIU</div>',
+      '<div class="welcome-subtitle">轻量级 Bilibili 音乐播放器</div>',
+      '<div class="welcome-features">',
+      '<div class="welcome-feature"><span class="wf-icon">📂</span>同步你的 B 站收藏夹</div>',
+      '<div class="welcome-feature"><span class="wf-icon">🎧</span>在线播放高品质音频</div>',
+      '<div class="welcome-feature"><span class="wf-icon">🔍</span>收藏夹内快速搜索歌曲</div>',
+      '</div>',
+      '<button class="welcome-btn" onclick="showCookieDialog()">登录 Bilibili</button>',
+      '<div class="welcome-footer">登录后即可同步你的收藏夹歌单</div>',
+      '</div>'
+    ].join('');
+    _playerEl.style.display = "none";
+  }
+})();
+</script>
 </body>
 </html>
